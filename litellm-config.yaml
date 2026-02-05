@@ -1,0 +1,43 @@
+# LiteLLM Configuration for Healthcare AI Platform
+
+# Model definitions
+model_list:
+  - model_name: ollama-llama
+    litellm_params:
+      model: ollama/llama3.2:3b
+      api_base: http://ollama:11434
+
+# LiteLLM settings
+litellm_settings:
+  # Request timeout (30 seconds)
+  request_timeout: 30
+
+  # Logging verbosity
+  set_verbose: false
+
+  # Drop params that model doesn't support
+  drop_params: true
+
+  # Callbacks (none for now, will add AIM after virtual key generation)
+  callbacks: []
+
+# Database configuration for storing keys and usage
+database_url: postgresql://healthcare:healthcare123@postgres:5432/litellm
+
+# Master key for admin operations (from environment variable)
+master_key: ${LITELLM_MASTER_KEY}
+
+# General settings
+general_settings:
+  # Store model definitions in database
+  store_model_in_db: true
+
+  # Enable user authentication
+  allow_user_auth: true
+
+  # Default budget and rate limiting
+  max_budget: 100
+  budget_duration: "30d"
+
+  # Enable key generation
+  disable_spend_logs: false
