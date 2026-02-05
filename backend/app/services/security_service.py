@@ -110,7 +110,17 @@ class AIMClient:
     async def scan(self, content: str, scan_type: str = "input") -> Dict[str, Any]:
         """Scan content with AIM via LiteLLM proxy using generated virtual key."""
         start = time.time()
-        
+
+        # Check if virtual key is configured
+        if not self.litellm_key or self.litellm_key.strip() == "":
+            elapsed = int((time.time() - start) * 1000)
+            return {
+                "verdict": "error",
+                "reason": "LITELLM_VIRTUAL_KEY not configured",
+                "scan_time_ms": elapsed,
+                "details": {},
+            }
+
         try:
             payload = {
                 "model": "ollama-llama",
@@ -118,12 +128,12 @@ class AIMClient:
                 "max_tokens": 1,
                 "stream": False,
             }
-            
+
             headers = {
                 "Authorization": f"Bearer {self.litellm_key}",
                 "Content-Type": "application/json",
             }
-            
+
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     f"{self.litellm_url}/v1/chat/completions",
