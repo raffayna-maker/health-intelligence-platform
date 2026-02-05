@@ -20,7 +20,7 @@ services:
       postgres -c 'max_connections=200'
 
   chromadb:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:0.5.23
     ports:
       - "8000:8000"
     volumes:
