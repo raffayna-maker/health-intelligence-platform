@@ -35,18 +35,28 @@ class HiddenLayerClient:
             self._token_expiry = time.time() + 3240
             return self._token
 
-    async def scan(self, content: str, scan_type: str = "input") -> Dict[str, Any]:
+    async def scan(self, content: str, scan_type: str = "input", prompt: Optional[str] = None) -> Dict[str, Any]:
         """Scan content with Hidden Layer Prompt Analyzer SaaS."""
         start = time.time()
-        
+
         try:
             token = await self._get_token()
             api_url = "https://api.hiddenlayer.ai/api/v1/submit/prompt-analyzer"
-            
+
             payload = {"model": "healthcare-platform"}
             if scan_type == "input":
                 payload["prompt"] = content
             else:
+                # Output scan requires both prompt and output
+                if not prompt:
+                    elapsed = int((time.time() - start) * 1000)
+                    return {
+                        "verdict": "error",
+                        "reason": "Output scan requires prompt parameter",
+                        "scan_time_ms": elapsed,
+                        "details": {},
+                    }
+                payload["prompt"] = prompt
                 payload["output"] = content
             
             headers = {
@@ -107,7 +117,7 @@ class AIMClient:
         self.litellm_url = settings.litellm_base_url or "http://litellm:4000"
         self.litellm_key = settings.litellm_virtual_key
 
-    async def scan(self, content: str, scan_type: str = "input") -> Dict[str, Any]:
+    async def scan(self, content: str, scan_type: str = "input", prompt: Optional[str] = None) -> Dict[str, Any]:
         """Scan content with AIM via LiteLLM proxy using generated virtual key."""
         start = time.time()
 
@@ -188,13 +198,14 @@ async def dual_security_scan(
     content: str,
     scan_type: str = "input",
     feature_name: str = "unknown",
+    prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Perform dual security scan with both Hidden Layer and AIM."""
     hl_client = HiddenLayerClient()
     aim_client = AIMClient()
-    
-    hl_task = asyncio.create_task(hl_client.scan(content, scan_type))
-    aim_task = asyncio.create_task(aim_client.scan(content, scan_type))
+
+    hl_task = asyncio.create_task(hl_client.scan(content, scan_type, prompt))
+    aim_task = asyncio.create_task(aim_client.scan(content, scan_type, prompt))
     
     hl_result, aim_result = await asyncio.gather(hl_task, aim_task)
     

@@ -86,6 +86,7 @@ class AssistantService:
             content=answer,
             scan_type="output",
             feature_name="clinical_assistant",
+            prompt=question,
         )
         
         # Log output scan to database
