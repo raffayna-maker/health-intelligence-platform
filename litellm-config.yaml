@@ -18,8 +18,14 @@ litellm_settings:
   # Drop params that model doesn't support
   drop_params: true
 
-  # Callbacks (none for now, will add AIM after virtual key generation)
-  callbacks: []
+  # Callbacks - AIM Security integration
+  callbacks: ["aim"]
+
+  # AIM callback configuration
+  aim_callback_params:
+    api_base: https://api.aim.security
+    api_key: ${AIM_API_KEY}
+    mode: "guardrails"
 
 # Database configuration for storing keys and usage
 database_url: postgresql://healthcare:healthcare123@postgres:5432/litellm
