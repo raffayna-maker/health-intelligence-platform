@@ -1,8 +1,10 @@
 """
 Generate 200 synthetic patients and load into PostgreSQL + ChromaDB.
 Run with: python -m scripts.generate_patients
+Run with: python -m scripts.generate_patients --chromadb-only  (to re-index existing patients)
 """
 
+import argparse
 import asyncio
 import random
 from datetime import date, timedelta
@@ -194,53 +196,67 @@ def generate_notes(archetype: dict) -> str:
     return result
 
 
-async def generate():
+async def generate(chromadb_only: bool = False):
     async with async_session() as db:
         # Check if patients already exist
         count = await db.scalar(select(func.count(Patient.id)))
-        if count and count >= 200:
-            print(f"Database already has {count} patients. Skipping generation.")
-            return
 
-        print("Generating 200 synthetic patients...")
-        patients_data = []
+        if chromadb_only:
+            # ChromaDB-only mode: fetch existing patients and re-embed them
+            if not count or count == 0:
+                print("Error: No patients found in PostgreSQL. Cannot re-index ChromaDB.")
+                print("Run without --chromadb-only to generate patients first.")
+                return
 
-        for i in range(200):
-            gender = random.choice(["Male", "Female"])
-            archetype = random.choice(ARCHETYPES)
-            risk_low, risk_high = archetype["risk_range"]
+            print(f"ChromaDB re-indexing mode: Fetching {count} existing patients from PostgreSQL...")
+            result = await db.execute(select(Patient))
+            patients_data = result.scalars().all()
+            print(f"Fetched {len(patients_data)} patients. Skipping patient generation.")
+        else:
+            # Normal mode: generate new patients
+            if count and count >= 200:
+                print(f"Database already has {count} patients. Skipping generation.")
+                return
 
-            # Add some randomized extra conditions occasionally
-            conditions = list(archetype["conditions"])
-            if random.random() < 0.2:
-                extra = random.choice(["Obesity", "Sleep Apnea", "Hypothyroidism", "GERD", "Migraine"])
-                if extra not in conditions:
-                    conditions.append(extra)
+            print("Generating 200 synthetic patients...")
+            patients_data = []
 
-            allergies_options = [[], ["Penicillin"], ["Sulfa drugs"], ["NSAIDs"], ["Latex"],
-                                ["Penicillin", "Sulfa drugs"], ["Codeine"]]
+            for i in range(200):
+                gender = random.choice(["Male", "Female"])
+                archetype = random.choice(ARCHETYPES)
+                risk_low, risk_high = archetype["risk_range"]
 
-            patient = Patient(
-                patient_id=f"PT-{str(i + 1).zfill(3)}",
-                name=generate_name(gender),
-                date_of_birth=generate_dob(),
-                gender=gender,
-                ssn=generate_ssn(),
-                address=generate_address(),
-                conditions=conditions,
-                medications=list(archetype["medications"]),
-                allergies=random.choice(allergies_options),
-                risk_score=random.randint(risk_low, risk_high),
-                risk_factors=list(archetype["risk_factors"]),
-                last_visit=date.today() - timedelta(days=random.randint(1, 90)),
-                next_appointment=date.today() + timedelta(days=random.randint(7, 60)),
-                notes=generate_notes(archetype),
-            )
-            db.add(patient)
-            patients_data.append(patient)
+                # Add some randomized extra conditions occasionally
+                conditions = list(archetype["conditions"])
+                if random.random() < 0.2:
+                    extra = random.choice(["Obesity", "Sleep Apnea", "Hypothyroidism", "GERD", "Migraine"])
+                    if extra not in conditions:
+                        conditions.append(extra)
 
-        await db.commit()
-        print(f"Created 200 patients in PostgreSQL.")
+                allergies_options = [[], ["Penicillin"], ["Sulfa drugs"], ["NSAIDs"], ["Latex"],
+                                    ["Penicillin", "Sulfa drugs"], ["Codeine"]]
+
+                patient = Patient(
+                    patient_id=f"PT-{str(i + 1).zfill(3)}",
+                    name=generate_name(gender),
+                    date_of_birth=generate_dob(),
+                    gender=gender,
+                    ssn=generate_ssn(),
+                    address=generate_address(),
+                    conditions=conditions,
+                    medications=list(archetype["medications"]),
+                    allergies=random.choice(allergies_options),
+                    risk_score=random.randint(risk_low, risk_high),
+                    risk_factors=list(archetype["risk_factors"]),
+                    last_visit=date.today() - timedelta(days=random.randint(1, 90)),
+                    next_appointment=date.today() + timedelta(days=random.randint(7, 60)),
+                    notes=generate_notes(archetype),
+                )
+                db.add(patient)
+                patients_data.append(patient)
+
+            await db.commit()
+            print(f"Created 200 patients in PostgreSQL.")
 
         # Embed into ChromaDB
         print("Embedding patients into ChromaDB for RAG...")
@@ -286,4 +302,14 @@ async def generate():
 
 
 if __name__ == "__main__":
-    asyncio.run(generate())
+    parser = argparse.ArgumentParser(
+        description="Generate synthetic patients and embed into PostgreSQL + ChromaDB"
+    )
+    parser.add_argument(
+        "--chromadb-only",
+        action="store_true",
+        help="Only re-index existing patients into ChromaDB (skip patient generation)"
+    )
+    args = parser.parse_args()
+
+    asyncio.run(generate(chromadb_only=args.chromadb_only))
