@@ -12,7 +12,7 @@ class OllamaService:
         self.embed_model = settings.ollama_embed_model
 
     async def generate(self, prompt: str, system: str = "", temperature: float = 0.7) -> str:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             payload = {
                 "model": self.model,
                 "prompt": prompt,
