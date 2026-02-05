@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.ollama_service import ollama_service
-from app.services.security_service import dual_security_scan
+from app.services.security_service import dual_security_scan, log_security_scan
 from app.models.agent_run import AgentRun, AgentStep
 from app.agents.tools import TOOL_REGISTRY
 
@@ -66,33 +66,20 @@ class BaseAgent(ABC):
 
     def _build_reasoning_prompt(self, task: str, iteration: int) -> str:
         history = ""
-        for mem in self.short_term_memory[-10:]:
-            history += f"\nStep {mem['iteration']}: {mem['summary']}"
-
-        tools_desc = self._build_tool_descriptions()
-
+        for mem in self.short_term_memory[-3:]:
+            history += f"\n{mem['summary']}"
+        
+        tools = ", ".join(self.available_tools)
+        
         return f"""Task: {task}
+Tools: {tools}
+History:{history or " (none)"}
+Step: {iteration}/{self.max_iterations}
 
-Available tools:
-{tools_desc}
-
-Previous steps:{history if history else " (none yet - this is the first step)"}
-
-Current iteration: {iteration} of {self.max_iterations}
-
-Based on the task and what has been done so far, decide what to do next.
-You MUST respond with EXACTLY one JSON object in one of these formats:
-
-To use a tool:
-{{"type": "use_tool", "tool": "tool_name", "input": {{"param": "value"}}, "reasoning": "why I chose this"}}
-
-To provide the final answer (when task is complete):
-{{"type": "final_answer", "answer": "your complete answer", "reasoning": "why task is complete"}}
-
-To escalate to a human:
-{{"type": "need_human", "reason": "why human intervention needed"}}
-
-Respond with ONLY the JSON object, nothing else."""
+JSON only:
+{{"type": "use_tool", "tool": "name", "input": {{}}, "reasoning": "..."}}
+OR {{"type": "final_answer", "answer": "...", "reasoning": "..."}}
+OR {{"type": "need_human", "reason": "..."}}"""
 
     async def run(self, task: str, db: AsyncSession) -> AsyncGenerator[dict, None]:
         """
@@ -132,26 +119,25 @@ Respond with ONLY the JSON object, nothing else."""
             # --- SECURITY SCAN: Reasoning ---
             reasoning_scan = await dual_security_scan(
                 content=raw_reasoning,
-                scan_type="agent_reasoning",
-                feature=f"{self.agent_type}_agent",
-                db=db,
-                agent_run_id=run_id,
+                scan_type="input",
+                feature_name=f"{self.agent_type}_agent",
             )
+            await log_security_scan(db, reasoning_scan, raw_reasoning, agent_run_id=run_id)
 
             step_reasoning = AgentStep(
                 agent_run_id=run_id,
                 iteration=iteration,
                 step_type="reasoning",
                 content=raw_reasoning,
-                security_scans=reasoning_scan.model_dump(),
+                security_scans=reasoning_scan,
             )
             db.add(step_reasoning)
             await db.flush()
 
-            yield {"event": "security_scan", "data": {"iteration": iteration, "stage": "reasoning", "scan": reasoning_scan.model_dump()}}
+            yield {"event": "security_scan", "data": {"iteration": iteration, "stage": "reasoning", "scan": reasoning_scan}}
 
-            if reasoning_scan.blocked:
-                yield {"event": "blocked", "data": {"iteration": iteration, "stage": "reasoning", "scan": reasoning_scan.model_dump()}}
+            if reasoning_scan.get("blocked"):
+                yield {"event": "blocked", "data": {"iteration": iteration, "stage": "reasoning", "scan": reasoning_scan}}
                 agent_run.status = "blocked"
                 agent_run.summary = f"Blocked at iteration {iteration}: reasoning flagged by security"
                 agent_run.iterations = iteration + 1
@@ -188,16 +174,15 @@ Respond with ONLY the JSON object, nothing else."""
                 # Security scan tool input
                 input_scan = await dual_security_scan(
                     content=json.dumps(tool_input),
-                    scan_type="tool_call_input",
-                    feature=f"agent_tool_{tool_name}",
-                    db=db,
-                    agent_run_id=run_id,
+                    scan_type="input",
+                    feature_name=f"agent_tool_{tool_name}",
                 )
+                await log_security_scan(db, input_scan, json.dumps(tool_input), agent_run_id=run_id)
 
-                yield {"event": "security_scan", "data": {"iteration": iteration, "stage": "tool_input", "tool": tool_name, "scan": input_scan.model_dump()}}
+                yield {"event": "security_scan", "data": {"iteration": iteration, "stage": "tool_input", "tool": tool_name, "scan": input_scan}}
 
-                if input_scan.blocked:
-                    yield {"event": "blocked", "data": {"iteration": iteration, "stage": "tool_input", "scan": input_scan.model_dump()}}
+                if input_scan.get("blocked"):
+                    yield {"event": "blocked", "data": {"iteration": iteration, "stage": "tool_input", "scan": input_scan}}
                     agent_run.status = "blocked"
                     agent_run.summary = f"Blocked at iteration {iteration}: tool input for {tool_name} flagged"
                     agent_run.iterations = iteration + 1
@@ -219,13 +204,12 @@ Respond with ONLY the JSON object, nothing else."""
                 # Security scan tool output
                 output_scan = await dual_security_scan(
                     content=json.dumps(tool_result, default=str),
-                    scan_type="tool_call_output",
-                    feature=f"agent_tool_{tool_name}",
-                    db=db,
-                    agent_run_id=run_id,
+                    scan_type="output",
+                    feature_name=f"agent_tool_{tool_name}",
                 )
+                await log_security_scan(db, output_scan, json.dumps(tool_result, default=str), agent_run_id=run_id)
 
-                yield {"event": "security_scan", "data": {"iteration": iteration, "stage": "tool_output", "tool": tool_name, "scan": output_scan.model_dump()}}
+                yield {"event": "security_scan", "data": {"iteration": iteration, "stage": "tool_output", "tool": tool_name, "scan": output_scan}}
 
                 # Log step
                 step_tool = AgentStep(
@@ -235,13 +219,13 @@ Respond with ONLY the JSON object, nothing else."""
                     tool_name=tool_name,
                     tool_input=tool_input,
                     tool_output=tool_result,
-                    security_scans={"input": input_scan.model_dump(), "output": output_scan.model_dump()},
+                    security_scans={"input": input_scan, "output": output_scan},
                 )
                 db.add(step_tool)
                 await db.flush()
 
-                if output_scan.blocked:
-                    yield {"event": "blocked", "data": {"iteration": iteration, "stage": "tool_output", "scan": output_scan.model_dump()}}
+                if output_scan.get("blocked"):
+                    yield {"event": "blocked", "data": {"iteration": iteration, "stage": "tool_output", "scan": output_scan}}
                     agent_run.status = "blocked"
                     agent_run.summary = f"Blocked at iteration {iteration}: tool output from {tool_name} flagged"
                     agent_run.iterations = iteration + 1

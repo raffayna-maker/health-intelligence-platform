@@ -16,6 +16,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    command: >
+      postgres -c 'max_connections=200'
 
   chromadb:
     image: chromadb/chroma:latest
@@ -32,13 +34,23 @@ services:
       - "11434:11434"
     volumes:
       - ollama_models:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    ports:
+      - "4000:4000"
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
+      AIM_API_KEY: ${AIM_API_KEY}
+      DATABASE_URL: postgresql://healthcare:${POSTGRES_PASSWORD:-healthcare123}@postgres:5432/litellm
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "8"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
 
   backend:
     build:
@@ -53,6 +65,7 @@ services:
       CHROMADB_HOST: chromadb
       CHROMADB_PORT: 8000
       OLLAMA_BASE_URL: http://ollama:11434
+      LITELLM_BASE_URL: http://litellm:4000
       UPLOAD_DIR: /app/uploads
     volumes:
       - ./backend:/app
@@ -63,6 +76,8 @@ services:
       chromadb:
         condition: service_started
       ollama:
+        condition: service_started
+      litellm:
         condition: service_started
 
   frontend:

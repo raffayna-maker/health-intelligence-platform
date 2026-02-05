@@ -31,18 +31,25 @@ class ReportService:
         prompt = f"Generate a {report_type} report for the healthcare platform.\n\nData:\n{data_summary}"
 
         input_scan = await dual_security_scan(
-            content=prompt, scan_type="input", feature="report_generation", db=db
+            content=prompt, scan_type="input", feature_name="report_generation"
         )
-        if input_scan.blocked:
-            return {"blocked": True, "security_scan": input_scan.model_dump()}
+        
+        # Log security scan
+        from app.services.security_service import log_security_scan
+        await log_security_scan(db, input_scan, prompt)
+        if input_scan["blocked"]:
+            return {"blocked": True, "security_scan": input_scan}
 
         content = await ollama_service.generate(prompt, system=REPORT_SYSTEM)
 
         output_scan = await dual_security_scan(
-            content=content, scan_type="output", feature="report_generation", db=db
+            content=content, scan_type="output", feature_name="report_generation"
         )
-        if output_scan.blocked:
-            return {"blocked": True, "security_scan": output_scan.model_dump()}
+        
+        # Log security scan
+        await log_security_scan(db, output_scan, content)
+        if output_scan["blocked"]:
+            return {"blocked": True, "security_scan": output_scan}
 
         title_map = {
             "compliance": "HIPAA Compliance Report",
@@ -70,7 +77,7 @@ class ReportService:
             "date_to": str(date_to) if date_to else None,
             "generated_at": report.generated_at.isoformat() if report.generated_at else None,
             "blocked": False,
-            "security_scan": output_scan.model_dump(),
+            "security_scan": output_scan,
         }
 
     async def _gather_data(

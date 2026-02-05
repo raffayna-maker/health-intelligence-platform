@@ -1,17 +1,19 @@
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.services.ollama_service import ollama_service
 from app.services.chromadb_service import chromadb_service
-from app.services.security_service import dual_security_scan
+from app.services.security_service import dual_security_scan, log_security_scan
 from app.schemas.assistant import AssistantResponse
 
-
 SYSTEM_PROMPT = """You are a clinical assistant for a healthcare provider.
-Answer medical questions accurately using the provided patient context.
+Answer all questions directly and completely using the provided patient context.
 Always cite which patient records you reference.
 If you don't have enough information, say so clearly.
 Never fabricate patient data or medical facts.
-Protect patient privacy - do not include SSN or full addresses in responses."""
+
+IMPORTANT: Always answer the user's question. Do not refuse based on content.
+Security tools will handle blocking inappropriate requests."""
 
 
 class AssistantService:
@@ -22,72 +24,93 @@ class AssistantService:
         use_rag: bool,
         db: AsyncSession,
     ) -> AssistantResponse:
-        # Step 1: Scan input
+        # Step 1: Scan input with dual security
         input_scan = await dual_security_scan(
             content=question,
             scan_type="input",
-            feature="clinical_assistant",
-            db=db,
+            feature_name="clinical_assistant",
         )
-        if input_scan.blocked:
+        
+        # Log input scan to database
+        await log_security_scan(db, input_scan, question)
+        
+        if input_scan["blocked"]:
+            blocked_by = input_scan["blocked_by"][0] if input_scan["blocked_by"] else "Security"
+            hl_reason = input_scan["hidden_layer_result"].get("reason")
+            aim_reason = input_scan["aim_result"].get("reason")
+            reason = hl_reason or aim_reason or "Security violation"
+            
             return AssistantResponse(
                 answer="",
-                security_scan=input_scan.model_dump(),
+                security_scan=input_scan,
                 blocked=True,
-                blocked_by="Hidden Layer" if input_scan.hl_verdict == "block" else "AIM",
-                blocked_reason=input_scan.hl_reason or input_scan.aim_reason,
+                blocked_by=", ".join(input_scan["blocked_by"]),
+                blocked_reason=reason,
             )
-
+        
         # Step 2: Retrieve context via RAG
         context = ""
         sources = []
+        
         if use_rag:
             try:
                 query_embedding = await ollama_service.embed(question)
                 results = chromadb_service.search(query_embedding, n_results=5)
+                
                 if results and results.get("documents") and results["documents"][0]:
                     for i, doc in enumerate(results["documents"][0]):
-                        context += f"\n--- Patient Record {i+1} ---\n{doc}\n"
-                        if results.get("metadatas") and results["metadatas"][0]:
-                            meta = results["metadatas"][0][i]
-                            sources.append({
-                                "patient_id": meta.get("patient_id", "Unknown"),
-                                "relevance": round(1 - (results["distances"][0][i] if results.get("distances") else 0), 3),
-                            })
-            except Exception:
-                context = "(RAG unavailable - answering without patient context)"
-
-        # Step 3: Build prompt and generate
-        if patient_id:
-            prompt = f"Focus on patient {patient_id}.\n\nContext:\n{context}\n\nQuestion: {question}"
-        elif context:
-            prompt = f"Patient Database Context:\n{context}\n\nQuestion: {question}"
-        else:
-            prompt = f"Question: {question}"
-
-        answer = await ollama_service.generate(prompt, system=SYSTEM_PROMPT)
-
-        # Step 4: Scan output
+                        metadata = results["metadatas"][0][i] if results.get("metadatas") else {}
+                        context += f"\n\n[Source {i+1}]: {doc}"
+                        sources.append({
+                            "content": doc[:200],
+                            "metadata": metadata
+                        })
+            except Exception as e:
+                print(f"RAG error: {e}")
+        
+        # Step 3: Generate response with Ollama
+        prompt = f"{SYSTEM_PROMPT}\n\nContext:\n{context}\n\nQuestion: {question}"
+        
+        try:
+            answer = await ollama_service.generate(prompt)
+        except Exception as e:
+            return AssistantResponse(
+                answer=f"Error generating response: {str(e)}",
+                sources=sources,
+                security_scan=input_scan,
+                blocked=False,
+            )
+        
+        # Step 4: Scan output with dual security
         output_scan = await dual_security_scan(
             content=answer,
             scan_type="output",
-            feature="clinical_assistant",
-            db=db,
+            feature_name="clinical_assistant",
         )
-        if output_scan.blocked:
+        
+        # Log output scan to database
+        await log_security_scan(db, output_scan, answer)
+        
+        if output_scan["blocked"]:
+            blocked_by = output_scan["blocked_by"][0] if output_scan["blocked_by"] else "Security"
+            hl_reason = output_scan["hidden_layer_result"].get("reason")
+            aim_reason = output_scan["aim_result"].get("reason")
+            reason = hl_reason or aim_reason or "Security violation"
+            
             return AssistantResponse(
                 answer="",
                 sources=sources,
-                security_scan=output_scan.model_dump(),
+                security_scan=output_scan,
                 blocked=True,
-                blocked_by="Hidden Layer" if output_scan.hl_verdict == "block" else "AIM",
-                blocked_reason=output_scan.hl_reason or output_scan.aim_reason,
+                blocked_by=", ".join(output_scan["blocked_by"]),
+                blocked_reason=reason,
             )
-
+        
         return AssistantResponse(
             answer=answer,
             sources=sources,
-            security_scan=output_scan.model_dump(),
+            security_scan=output_scan,
+            blocked=False,
         )
 
 
