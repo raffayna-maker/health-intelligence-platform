@@ -15,19 +15,9 @@ class PatientMonitorAgent(BaseAgent):
     
     @property
     def system_prompt(self) -> str:
-        return """You are a clinical AI agent that monitors patient health.
-
-Your workflow:
-1. First, get all patients and their risk scores
-2. Identify patients with risk score > 75 (high risk)
-3. If high-risk patients found, alert the clinical team with specific patient IDs
-4. Provide a summary of your findings
-
-Important:
-- Use tools one at a time
-- Always respond with valid JSON only
-- No extra text outside the JSON
-- Be thorough but efficient"""
+        return """You monitor patient health.
+Workflow: 1) get risk scores 2) if any >75 alert team 3) summarize.
+Respond ONLY with JSON."""
     
     @property
     def available_tools(self) -> list[str]:

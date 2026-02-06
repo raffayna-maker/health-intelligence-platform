@@ -67,32 +67,20 @@ class BaseAgent(ABC):
 
     def _build_reasoning_prompt(self, task: str, iteration: int) -> str:
         history = ""
-        for mem in self.short_term_memory[-3:]:
-            history += f"\n- {mem['summary']}"
+        for mem in self.short_term_memory[-2:]:  # Reduced from 3 to 2
+            history += f"\n{mem['summary']}"
 
-        tool_descriptions = self._build_tool_descriptions()
+        # Simplified tool list - just names, no descriptions
+        tools = ", ".join(self.available_tools[:4])  # Only show first 4 tools to save tokens
 
-        return f"""You are working on: {task}
+        return f"""Task: {task}
+Tools: {tools}
+Done:{history or " nothing yet"}
+Step {iteration + 1}/{self.max_iterations}
 
-What you've done so far:{history or "\n- Nothing yet, this is your first step"}
-
-Available tools:
-{tool_descriptions}
-
-Current step: {iteration + 1}/{self.max_iterations}
-
-Decide your next action. Respond with ONLY ONE of these JSON formats:
-
-1. To use a tool:
-{{"type": "use_tool", "tool": "tool_name", "input": {{"param": "value"}}, "reasoning": "why I'm doing this"}}
-
-2. To give final answer:
-{{"type": "final_answer", "answer": "your complete answer here", "reasoning": "what I accomplished"}}
-
-3. If stuck:
-{{"type": "need_human", "reason": "what I need help with"}}
-
-Your JSON response:"""
+JSON only:
+{{"type":"use_tool","tool":"<name>","input":{{}},"reasoning":"..."}}
+OR {{"type":"final_answer","answer":"...","reasoning":"..."}}"""
 
     async def run(self, task: str, db: AsyncSession) -> AsyncGenerator[dict, None]:
         """
