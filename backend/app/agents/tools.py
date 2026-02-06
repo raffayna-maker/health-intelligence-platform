@@ -199,6 +199,64 @@ async def query_patient_cases(db: AsyncSession, conditions: list = None, min_age
     return {"query": {"conditions": conditions, "age_range": [min_age, max_age]}, "matches": len(matches), "patients": matches[:20]}
 
 
+async def send_patient_email(db: AsyncSession, patient_id: str = "", subject: str = "", message: str = "", priority: str = "normal", **kwargs) -> dict:
+    """Send email to patient (simulated - logs to patient notes)."""
+    result = await db.execute(select(Patient).where(Patient.patient_id == patient_id))
+    patient = result.scalar_one_or_none()
+
+    if not patient:
+        return {"error": f"Patient {patient_id} not found"}
+
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    email_address = f"{patient_id}@patients.healthcare.local"
+
+    # Log email to patient notes for demo purposes
+    email_note = f"[EMAIL SENT] To: {email_address}\nSubject: {subject}\nMessage: {message[:200]}..."
+    patient.notes = (patient.notes or "") + f"\n[{timestamp}] {email_note}"
+    await db.flush()
+
+    return {
+        "sent": True,
+        "patient_id": patient_id,
+        "patient_name": patient.name,
+        "email": email_address,
+        "subject": subject,
+        "priority": priority,
+        "timestamp": timestamp,
+        "delivery_status": "delivered (logged to patient notes)",
+    }
+
+
+async def request_medication_refill(db: AsyncSession, patient_id: str = "", medication: str = "", **kwargs) -> dict:
+    """Request medication refill (simulated)."""
+    result = await db.execute(select(Patient).where(Patient.patient_id == patient_id))
+    patient = result.scalar_one_or_none()
+
+    if not patient:
+        return {"error": f"Patient {patient_id} not found"}
+
+    from datetime import datetime, timedelta
+    timestamp = datetime.now()
+    refill_id = f"RX-{timestamp.strftime('%Y%m%d-%H%M%S')}"
+
+    # Log refill request to patient notes
+    refill_note = f"[REFILL REQUESTED] Medication: {medication}, Refill ID: {refill_id}"
+    patient.notes = (patient.notes or "") + f"\n[{timestamp.strftime('%Y-%m-%d %H:%M')}] {refill_note}"
+    await db.flush()
+
+    return {
+        "refill_requested": True,
+        "patient_id": patient_id,
+        "patient_name": patient.name,
+        "medication": medication,
+        "refill_id": refill_id,
+        "pharmacy": "CVS Pharmacy #1234",
+        "estimated_ready": (timestamp + timedelta(days=1)).strftime("%Y-%m-%d"),
+        "status": "pending_pharmacy_approval",
+    }
+
+
 # Tool registry used by agents
 TOOL_REGISTRY = {
     "get_all_patients": {
@@ -245,5 +303,15 @@ TOOL_REGISTRY = {
         "fn": query_patient_cases,
         "description": "Query patient database for similar cases by conditions and age",
         "parameters": {"conditions": "array of strings", "min_age": "int", "max_age": "int"},
+    },
+    "send_patient_email": {
+        "fn": send_patient_email,
+        "description": "Send email to a patient (simulated - logs to patient notes)",
+        "parameters": {"patient_id": "string", "subject": "string", "message": "string", "priority": "string - high/normal/low"},
+    },
+    "request_medication_refill": {
+        "fn": request_medication_refill,
+        "description": "Request medication refill for a patient (simulated)",
+        "parameters": {"patient_id": "string", "medication": "string"},
     },
 }

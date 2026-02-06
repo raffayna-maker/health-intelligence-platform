@@ -6,13 +6,13 @@ from sse_starlette.sse import EventSourceResponse
 from app.database import get_db
 from app.models.agent_run import AgentRun, AgentStep
 from app.schemas.agent import AgentInfo, AgentRunRequest, AgentChatRequest, AgentRunResponse, AgentStepResponse
-from app.agents.patient_monitor_agent import patient_monitor_agent
+from app.agents.care_coordinator_agent import care_coordinator_agent
 from app.agents.research_agent import clinical_research_agent
 
 router = APIRouter()
 
 AGENTS = {
-    "patient_monitor": patient_monitor_agent,
+    "care_coordinator": care_coordinator_agent,
     "clinical_research": clinical_research_agent,
 }
 
@@ -47,8 +47,8 @@ async def run_agent(agent_type: str, req: AgentRunRequest, db: AsyncSession = De
         return {"error": f"Unknown agent type: {agent_type}"}
 
     task = req.task or (
-        "Monitor all patients for health risks and alert the clinical team if any high-risk patients are found."
-        if agent_type == "patient_monitor"
+        "Coordinate patient care: identify high-risk patients, ensure medication adherence, schedule appointments as needed, and communicate with patients and clinical team."
+        if agent_type == "care_coordinator"
         else "Provide a general health overview of the patient population."
     )
 
