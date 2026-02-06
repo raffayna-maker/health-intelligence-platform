@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.database import engine, Base
 from app.routers import dashboard, patients, documents, analytics, assistant, agents, reports, security
 
@@ -29,6 +30,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    """Middleware to add no-cache headers to prevent browser caching."""
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
+        response.headers["Expires"] = "0"
+        response.headers["Pragma"] = "no-cache"
+        return response
+
+
+app.add_middleware(NoCacheMiddleware)
 
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
 app.include_router(patients.router, prefix="/api/patients", tags=["Patients"])
