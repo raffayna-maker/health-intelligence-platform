@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getAgents, getAgentRuns, getAgentRun, runAgentStream, chatWithResearchAgent } from '../api/client'
+import { getAgents, getAgentRuns, getAgentRun, runAgentStream } from '../api/client'
 import { AgentInfo, AgentRun } from '../types'
 
 interface AgentEvent {
@@ -17,7 +17,6 @@ export default function Agents() {
   const [activeAgent, setActiveAgent] = useState<string>('')
   const [events, setEvents] = useState<AgentEvent[]>([])
   const [taskInput, setTaskInput] = useState('')
-  const [chatInput, setChatInput] = useState('')
 
   // Run detail view
   const [viewingRun, setViewingRun] = useState<AgentRun | null>(null)
@@ -88,44 +87,6 @@ export default function Agents() {
     }
   }
 
-  const handleChatResearch = async () => {
-    if (!chatInput.trim()) return
-    const msg = chatInput
-    setChatInput('')
-    setActiveAgent('clinical_research')
-    setRunning(true)
-    setEvents([])
-
-    try {
-      const response = await chatWithResearchAgent(msg)
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-          for (const line of lines) {
-            if (line.startsWith('data:')) {
-              try {
-                const data = JSON.parse(line.slice(5).trim())
-                setEvents((prev) => [...prev, { event: data.event || 'message', data }])
-              } catch {}
-            }
-          }
-        }
-      }
-    } catch (err) {
-      setEvents((prev) => [...prev, { event: 'error', data: { message: String(err) } }])
-    } finally {
-      setRunning(false)
-      getAgentRuns().then((r) => setRecentRuns(r.runs))
-    }
-  }
 
   const handleViewRun = async (runId: number) => {
     setViewLoading(true)
@@ -244,7 +205,7 @@ export default function Agents() {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h3 className="text-lg font-semibold">
-                  {agent.agent_type === 'patient_monitor' ? '🏥' : '🔬'} {agent.name}
+                  {agent.agent_type === 'care_coordinator' ? '🏥' : '🔬'} {agent.name}
                 </h3>
                 <p className="text-sm text-gray-500 mt-1">{agent.description}</p>
               </div>
@@ -263,40 +224,21 @@ export default function Agents() {
               <p className="text-xs text-gray-400 mb-3">Last run: {new Date(agent.last_run).toLocaleString()}</p>
             )}
 
-            {agent.agent_type === 'patient_monitor' ? (
-              <div className="space-y-2">
-                <input
-                  className="input text-sm"
-                  placeholder="Custom task (optional)"
-                  value={taskInput}
-                  onChange={(e) => setTaskInput(e.target.value)}
-                />
-                <button
-                  onClick={() => handleRunAgent('patient_monitor')}
-                  disabled={running}
-                  className="btn-primary w-full"
-                >
-                  {running && activeAgent === 'patient_monitor' ? 'Running...' : 'Run Monitoring Check'}
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <input
-                  className="input text-sm"
-                  placeholder="Ask a medical question..."
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleChatResearch() }}
-                />
-                <button
-                  onClick={handleChatResearch}
-                  disabled={running || !chatInput.trim()}
-                  className="btn-primary w-full"
-                >
-                  {running && activeAgent === 'clinical_research' ? 'Researching...' : 'Ask Agent'}
-                </button>
-              </div>
-            )}
+            <div className="space-y-2">
+              <input
+                className="input text-sm"
+                placeholder="Custom task (optional)"
+                value={taskInput}
+                onChange={(e) => setTaskInput(e.target.value)}
+              />
+              <button
+                onClick={() => handleRunAgent(agent.agent_type)}
+                disabled={running}
+                className="btn-primary w-full"
+              >
+                {running && activeAgent === agent.agent_type ? 'Running...' : 'Run Agent'}
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -306,7 +248,7 @@ export default function Agents() {
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold">
-              {running ? '🟢 Agent Running' : '✅ Agent Run Complete'}: {activeAgent === 'patient_monitor' ? 'Patient Monitor' : 'Research Assistant'}
+              {running ? '🟢 Agent Running' : '✅ Agent Run Complete'}: {agents.find(a => a.agent_type === activeAgent)?.name || activeAgent}
             </h3>
             {running && <span className="text-sm text-blue-600 animate-pulse">Live</span>}
           </div>
@@ -329,7 +271,7 @@ export default function Agents() {
               <div key={run.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                 <div>
                   <span className="font-medium text-sm">
-                    {run.agent_type === 'patient_monitor' ? 'Patient Monitor' : 'Research Assistant'}
+                    {agents.find(a => a.agent_type === run.agent_type)?.name || run.agent_type}
                   </span>
                   <p className="text-xs text-gray-400">{run.started_at ? new Date(run.started_at).toLocaleString() : ''}</p>
                   {run.summary && <p className="text-xs text-gray-500 mt-0.5 truncate max-w-md">{run.summary}</p>}

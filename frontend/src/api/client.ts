@@ -94,14 +94,6 @@ export async function runAgentStream(agentType: string, task?: string): Promise<
   })
 }
 
-export async function chatWithResearchAgent(message: string): Promise<Response> {
-  return fetch(`${API_BASE}/agents/research/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
-  })
-}
-
 // Reports
 export const generateReport = (reportType: string, dateFrom?: string, dateTo?: string) =>
   request<any>('/reports/generate', {

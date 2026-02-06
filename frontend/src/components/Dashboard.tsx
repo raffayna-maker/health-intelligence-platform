@@ -56,7 +56,9 @@ export default function Dashboard() {
               {stats?.recent_agent_runs.map((run) => (
                 <div key={run.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                   <div>
-                    <span className="font-medium text-sm">{run.agent_type === 'patient_monitor' ? 'Patient Monitor' : 'Research Assistant'}</span>
+                    <span className="font-medium text-sm">
+                      {run.agent_type === 'care_coordinator' ? 'Care Coordinator' : run.agent_type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                    </span>
                     <p className="text-xs text-gray-400">{run.started_at ? new Date(run.started_at).toLocaleString() : ''}</p>
                   </div>
                   <span className={`text-xs font-medium px-2 py-1 rounded ${

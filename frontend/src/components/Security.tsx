@@ -153,8 +153,7 @@ export default function Security() {
           <option value="risk_calculation">Risk Calculation</option>
           <option value="trend_analysis">Trend Analysis</option>
           <option value="report_generation">Report Generation</option>
-          <option value="patient_monitor_agent">Patient Monitor Agent</option>
-          <option value="clinical_research_agent">Clinical Research Agent</option>
+          <option value="care_coordinator_agent">Care Coordinator Agent</option>
         </select>
         <select className="input w-40" value={verdictFilter} onChange={(e) => { setVerdictFilter(e.target.value); setPage(1) }}>
           <option value="">All Verdicts</option>
