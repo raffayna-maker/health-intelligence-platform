@@ -51,41 +51,29 @@ export default function Agents() {
       let buffer = ''
       let currentEventType = 'message'
 
-      console.log('[SSE] Starting to read stream...')
-
       if (reader) {
         while (true) {
           const { done, value } = await reader.read()
-          if (done) {
-            console.log('[SSE] Stream done')
-            break
-          }
+          if (done) break
 
           buffer += decoder.decode(value, { stream: true })
           const lines = buffer.split('\n')
           buffer = lines.pop() || ''
 
           for (const line of lines) {
-            if (line.trim() === '') continue // Skip empty lines
-
-            console.log('[SSE] Received line:', line)
+            if (line.trim() === '') continue
 
             if (line.startsWith('event:')) {
               currentEventType = line.slice(6).trim()
-              console.log('[SSE] Event type:', currentEventType)
             } else if (line.startsWith('data:')) {
               const dataStr = line.slice(5).trim()
-              console.log('[SSE] Data string:', dataStr)
               try {
                 const data = JSON.parse(dataStr)
-                console.log('[SSE] Parsed data:', data, 'Event type:', currentEventType)
                 setEvents((prev) => [...prev, { event: currentEventType, data }])
-                currentEventType = 'message' // Reset for next event
+                currentEventType = 'message'
               } catch (e) {
-                console.error('[SSE] Failed to parse SSE data:', dataStr, e)
+                console.error('SSE parse error:', e)
               }
-            } else {
-              console.log('[SSE] Unknown line format:', line)
             }
           }
         }

@@ -201,6 +201,10 @@ OR {{"type":"final_answer","answer":"...","reasoning":"..."}}"""
                 tool_name = decision.get("tool", "")
                 tool_input = decision.get("input", {})
 
+                # Ensure tool_input is a dict (LLM sometimes generates strings)
+                if not isinstance(tool_input, dict):
+                    tool_input = {}
+
                 if tool_name not in TOOL_REGISTRY or tool_name not in self.available_tools:
                     yield {"event": "tool_error", "data": {"iteration": iteration, "error": f"Unknown tool: {tool_name}"}}
                     self.short_term_memory.append({"iteration": iteration, "summary": f"Tried unknown tool: {tool_name}"})
