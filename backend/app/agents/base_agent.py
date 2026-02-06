@@ -29,6 +29,7 @@ class BaseAgent(ABC):
         self.short_term_memory: list[dict] = []
         self.working_memory: dict = {}
         self.max_iterations = 15
+        self.tool_call_history: list[tuple] = []  # Track (tool_name, input) to detect loops
 
     @property
     @abstractmethod
@@ -106,6 +107,7 @@ Your JSON response:"""
 
         self.working_memory = {"task": task, "status": "in_progress", "iteration": 0}
         self.short_term_memory = []
+        self.tool_call_history = []
 
         yield {"event": "start", "data": {"run_id": run_id, "agent": self.agent_type, "task": task}}
 
@@ -216,6 +218,27 @@ Your JSON response:"""
                     self.short_term_memory.append({"iteration": iteration, "summary": f"Tried unknown tool: {tool_name}"})
                     continue
 
+                # Check for infinite loops (same tool with same input called 3+ times)
+                tool_signature = (tool_name, json.dumps(tool_input, sort_keys=True))
+                recent_calls = self.tool_call_history[-5:] if len(self.tool_call_history) >= 5 else self.tool_call_history
+                if recent_calls.count(tool_signature) >= 2:
+                    yield {"event": "message", "data": {"iteration": iteration, "message": f"Loop detected: {tool_name} called repeatedly with same input. Forcing completion."}}
+                    decision = {
+                        "type": "final_answer",
+                        "answer": f"Task could not be completed - agent stuck in loop calling {tool_name} repeatedly.",
+                        "reasoning": "Loop detection triggered"
+                    }
+                    agent_run.status = "failed"
+                    agent_run.summary = f"Loop detected at iteration {iteration}"
+                    agent_run.iterations = iteration + 1
+                    agent_run.completed_at = datetime.utcnow()
+                    await db.flush()
+
+                    yield {"event": "error", "data": {"message": "Loop detected", "iteration": iteration}}
+                    return
+
+                self.tool_call_history.append(tool_signature)
+
                 # Security scan tool input
                 input_scan = await dual_security_scan(
                     content=json.dumps(tool_input),
@@ -241,8 +264,16 @@ Your JSON response:"""
                 try:
                     tool_fn = TOOL_REGISTRY[tool_name]["fn"]
                     tool_result = await tool_fn(db=db, **tool_input)
+
+                    # Ensure we have a valid result
+                    if tool_result is None:
+                        tool_result = {"error": "Tool returned None"}
+
                 except Exception as e:
-                    tool_result = {"error": str(e)}
+                    import traceback
+                    error_trace = traceback.format_exc()
+                    tool_result = {"error": str(e), "traceback": error_trace}
+                    yield {"event": "message", "data": {"iteration": iteration, "message": f"Tool error: {str(e)}"}}
 
                 yield {"event": "tool_result", "data": {"iteration": iteration, "tool": tool_name, "result": tool_result}}
 
