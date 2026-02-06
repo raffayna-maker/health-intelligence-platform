@@ -54,7 +54,12 @@ async def run_agent(agent_type: str, req: AgentRunRequest, db: AsyncSession = De
         async for event in agent.run(task, db):
             event_type = event.get("event", "message")
             event_data = event.get("data", {})
-            yield {"event": event_type, "data": json.dumps(event_data, default=str)}
+            # Format as proper SSE with explicit event type
+            from sse_starlette.sse import ServerSentEvent
+            yield ServerSentEvent(
+                data=json.dumps(event_data, default=str),
+                event=event_type
+            )
         await db.commit()
 
     return EventSourceResponse(event_generator())
