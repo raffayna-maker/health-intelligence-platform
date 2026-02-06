@@ -2,9 +2,9 @@
 
 # Model definitions
 model_list:
-  - model_name: ollama-llama
+  - model_name: ollama-qwen
     litellm_params:
-      model: ollama/llama3.2:3b
+      model: ollama/qwen2.5:3b
       api_base: http://ollama:11434
 
 # Guardrails configuration

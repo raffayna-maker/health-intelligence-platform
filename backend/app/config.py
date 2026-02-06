@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     
     # Ollama
     ollama_base_url: str = Field(default="http://ollama:11434", env="OLLAMA_BASE_URL")
-    ollama_model: str = Field(default="llama3.2:3b", env="OLLAMA_MODEL")
+    ollama_model: str = Field(default="qwen2.5:3b", env="OLLAMA_MODEL")
     ollama_embed_model: str = Field(default="nomic-embed-text", env="OLLAMA_EMBED_MODEL")
     
     # LiteLLM
