@@ -40,7 +40,11 @@ class Settings(BaseSettings):
     
     # File uploads
     upload_dir: str = Field(default="/app/uploads", env="UPLOAD_DIR")
-    
+
+    # Gmail SMTP
+    gmail_address: str = Field(default="", env="GMAIL_ADDRESS")
+    gmail_app_password: str = Field(default="", env="GMAIL_APP_PASSWORD")
+
     class Config:
         env_file = ".env"
         case_sensitive = False

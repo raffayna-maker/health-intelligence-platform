@@ -6,14 +6,12 @@ from sse_starlette.sse import EventSourceResponse
 from app.database import get_db
 from app.models.agent_run import AgentRun, AgentStep
 from app.schemas.agent import AgentInfo, AgentRunRequest, AgentChatRequest, AgentRunResponse, AgentStepResponse
-from app.agents.care_coordinator_agent import care_coordinator_agent
-# from app.agents.research_agent import clinical_research_agent  # Removed for now
+from app.agents.followup_agent import followup_agent
 
 router = APIRouter()
 
 AGENTS = {
-    "care_coordinator": care_coordinator_agent,
-    # "clinical_research": clinical_research_agent,  # Removed for now
+    "followup": followup_agent,
 }
 
 
@@ -47,9 +45,9 @@ async def run_agent(agent_type: str, req: AgentRunRequest, db: AsyncSession = De
         return {"error": f"Unknown agent type: {agent_type}"}
 
     task = req.task or (
-        "Coordinate patient care: identify high-risk patients, ensure medication adherence, schedule appointments as needed, and communicate with patients and clinical team."
-        if agent_type == "care_coordinator"
-        else "Provide a general health overview of the patient population."
+        "Find patients who haven't had appointments in 90+ days and send them follow-up reminder emails."
+        if agent_type == "followup"
+        else "Complete the requested task."
     )
 
     async def event_generator():

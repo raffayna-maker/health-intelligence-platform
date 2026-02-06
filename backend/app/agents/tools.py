@@ -257,6 +257,75 @@ async def request_medication_refill(db: AsyncSession, patient_id: str = "", medi
     }
 
 
+async def get_patients_needing_followup(db: AsyncSession, days_threshold: int = 90, **kwargs) -> dict:
+    """Find patients who haven't had appointments in the specified number of days."""
+    from datetime import date, timedelta
+
+    result = await db.execute(select(Patient))
+    patients = result.scalars().all()
+
+    threshold_date = date.today() - timedelta(days=days_threshold)
+    patients_needing_followup = []
+
+    for p in patients:
+        if p.last_visit:
+            if p.last_visit < threshold_date:
+                days_since = (date.today() - p.last_visit).days
+                # Generate test email from patient_id
+                test_email = f"{p.patient_id.lower().replace('-', '')}@test.com"
+                patients_needing_followup.append({
+                    "patient_id": p.patient_id,
+                    "name": p.name,
+                    "last_visit": str(p.last_visit),
+                    "days_since_last_visit": days_since,
+                    "email": test_email,
+                    "conditions": p.conditions or [],
+                })
+
+    return {
+        "threshold_days": days_threshold,
+        "total_patients_needing_followup": len(patients_needing_followup),
+        "patients": sorted(patients_needing_followup, key=lambda x: x["days_since_last_visit"], reverse=True),
+    }
+
+
+async def send_followup_email(db: AsyncSession, patient_id: str = "", **kwargs) -> dict:
+    """Send actual follow-up appointment reminder email via Gmail SMTP."""
+    from datetime import date
+    from app.services.email_service import email_service
+
+    result = await db.execute(select(Patient).where(Patient.patient_id == patient_id))
+    patient = result.scalar_one_or_none()
+
+    if not patient:
+        return {"error": f"Patient {patient_id} not found"}
+
+    if not patient.last_visit:
+        return {"error": f"Patient {patient_id} has no last_visit date on record"}
+
+    days_since = (date.today() - patient.last_visit).days
+
+    # Generate test email
+    test_email = f"{patient_id.lower().replace('-', '')}@test.com"
+
+    # Send email via SMTP
+    email_result = email_service.send_appointment_reminder(
+        to_email=test_email,
+        patient_name=patient.name,
+        days_since_last_appointment=days_since,
+    )
+
+    # Log to patient notes
+    if email_result["success"]:
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        note = f"[FOLLOW-UP EMAIL SENT] To: {test_email}, Days since last visit: {days_since}"
+        patient.notes = (patient.notes or "") + f"\n[{timestamp}] {note}"
+        await db.flush()
+
+    return email_result
+
+
 # Tool registry used by agents
 TOOL_REGISTRY = {
     "get_all_patients": {
@@ -313,5 +382,15 @@ TOOL_REGISTRY = {
         "fn": request_medication_refill,
         "description": "Request medication refill for a patient (simulated)",
         "parameters": {"patient_id": "string", "medication": "string"},
+    },
+    "get_patients_needing_followup": {
+        "fn": get_patients_needing_followup,
+        "description": "Find patients who haven't had appointments in the specified number of days (default 90)",
+        "parameters": {"days_threshold": "int - Number of days since last visit (default 90)"},
+    },
+    "send_followup_email": {
+        "fn": send_followup_email,
+        "description": "Send follow-up appointment reminder email to a patient via Gmail SMTP",
+        "parameters": {"patient_id": "string - The patient ID (e.g. PT-001)"},
     },
 }
