@@ -133,7 +133,7 @@ class AIMClient:
 
         try:
             payload = {
-                "model": "ollama-llama",
+                "model": "ollama-qwen",
                 "messages": [{"role": "user", "content": content}],
                 "max_tokens": 1,
                 "stream": False,
