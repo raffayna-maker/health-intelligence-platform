@@ -67,19 +67,31 @@ class BaseAgent(ABC):
     def _build_reasoning_prompt(self, task: str, iteration: int) -> str:
         history = ""
         for mem in self.short_term_memory[-3:]:
-            history += f"\n{mem['summary']}"
-        
-        tools = ", ".join(self.available_tools)
-        
-        return f"""Task: {task}
-Tools: {tools}
-History:{history or " (none)"}
-Step: {iteration}/{self.max_iterations}
+            history += f"\n- {mem['summary']}"
 
-JSON only:
-{{"type": "use_tool", "tool": "name", "input": {{}}, "reasoning": "..."}}
-OR {{"type": "final_answer", "answer": "...", "reasoning": "..."}}
-OR {{"type": "need_human", "reason": "..."}}"""
+        tool_descriptions = self._build_tool_descriptions()
+
+        return f"""You are working on: {task}
+
+What you've done so far:{history or "\n- Nothing yet, this is your first step"}
+
+Available tools:
+{tool_descriptions}
+
+Current step: {iteration + 1}/{self.max_iterations}
+
+Decide your next action. Respond with ONLY ONE of these JSON formats:
+
+1. To use a tool:
+{{"type": "use_tool", "tool": "tool_name", "input": {{"param": "value"}}, "reasoning": "why I'm doing this"}}
+
+2. To give final answer:
+{{"type": "final_answer", "answer": "your complete answer here", "reasoning": "what I accomplished"}}
+
+3. If stuck:
+{{"type": "need_human", "reason": "what I need help with"}}
+
+Your JSON response:"""
 
     async def run(self, task: str, db: AsyncSession) -> AsyncGenerator[dict, None]:
         """
@@ -105,12 +117,24 @@ OR {{"type": "need_human", "reason": "..."}}"""
 
             try:
                 raw_reasoning = await ollama_service.generate(
-                    reasoning_prompt, system=self.system_prompt, temperature=0.3
+                    reasoning_prompt, system=self.system_prompt, temperature=0.1
                 )
+
+                # Clean up response
+                raw_reasoning = raw_reasoning.strip()
+
+                # If empty response, retry once
+                if not raw_reasoning:
+                    yield {"event": "message", "data": {"iteration": iteration, "message": "Empty response, retrying..."}}
+                    raw_reasoning = await ollama_service.generate(
+                        reasoning_prompt, system=self.system_prompt, temperature=0.2
+                    )
+
             except Exception as e:
-                yield {"event": "error", "data": {"message": f"LLM error: {e}", "iteration": iteration}}
+                error_msg = str(e)
+                yield {"event": "error", "data": {"message": f"LLM error: {error_msg}", "iteration": iteration}}
                 agent_run.status = "failed"
-                agent_run.summary = f"LLM error at iteration {iteration}: {e}"
+                agent_run.summary = f"LLM error at iteration {iteration}: {error_msg}"
                 await db.flush()
                 return
 
@@ -146,18 +170,39 @@ OR {{"type": "need_human", "reason": "..."}}"""
                 return
 
             # --- STEP 2: PARSE decision ---
+            decision = None
             try:
+                # Try direct parse first
                 decision = json.loads(raw_reasoning.strip())
             except json.JSONDecodeError:
+                # Try to extract JSON from response
                 try:
                     start = raw_reasoning.find("{")
                     end = raw_reasoning.rfind("}") + 1
                     if start >= 0 and end > start:
-                        decision = json.loads(raw_reasoning[start:end])
-                    else:
-                        decision = {"type": "final_answer", "answer": raw_reasoning, "reasoning": "Could not parse as JSON"}
+                        json_str = raw_reasoning[start:end]
+                        decision = json.loads(json_str)
                 except Exception:
-                    decision = {"type": "final_answer", "answer": raw_reasoning, "reasoning": "Parse failure"}
+                    pass
+
+            # If still no valid decision, try to infer intent
+            if not decision or "type" not in decision:
+                lower_text = raw_reasoning.lower()
+                if "final_answer" in lower_text or (iteration >= self.max_iterations - 2):
+                    # Treat as final answer if near end or explicitly mentioned
+                    decision = {
+                        "type": "final_answer",
+                        "answer": raw_reasoning,
+                        "reasoning": "Inferred from non-JSON response"
+                    }
+                else:
+                    # Default to trying first tool as a fallback
+                    decision = {
+                        "type": "use_tool",
+                        "tool": self.available_tools[0] if self.available_tools else "none",
+                        "input": {},
+                        "reasoning": "Fallback - retrying with first available tool"
+                    }
 
             yield {"event": "decision", "data": {"iteration": iteration, "decision_type": decision.get("type"), "details": decision}}
 
