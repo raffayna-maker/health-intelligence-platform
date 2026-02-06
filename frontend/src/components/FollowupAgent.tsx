@@ -1,4 +1,4 @@
-// Appointment Follow-up Agent Component
+// Appointment Follow-up Agent Component v2.1 - Feb 6 2026
 import { useState } from 'react'
 import { runAgentStream } from '../api/client'
 
@@ -6,6 +6,8 @@ interface AgentEvent {
   event: string
   data: any
 }
+
+console.log('🔄 FollowupAgent.tsx v2.1 loaded - SSE parsing active')
 
 export default function FollowupAgent() {
   const [running, setRunning] = useState(false)
@@ -39,10 +41,12 @@ export default function FollowupAgent() {
 
             if (line.startsWith('event:')) {
               currentEventType = line.slice(6).trim()
+              console.log('📥 Event type:', currentEventType)
             } else if (line.startsWith('data:')) {
               const dataStr = line.slice(5).trim()
               try {
                 const data = JSON.parse(dataStr)
+                console.log('✅ Adding event:', currentEventType, 'Data:', data)
                 setEvents((prev) => [...prev, { event: currentEventType, data }])
 
                 // Capture final answer for summary
