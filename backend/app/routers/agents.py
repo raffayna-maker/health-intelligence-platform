@@ -7,13 +7,13 @@ from app.database import get_db
 from app.models.agent_run import AgentRun, AgentStep
 from app.schemas.agent import AgentInfo, AgentRunRequest, AgentChatRequest, AgentRunResponse, AgentStepResponse
 from app.agents.care_coordinator_agent import care_coordinator_agent
-from app.agents.research_agent import clinical_research_agent
+# from app.agents.research_agent import clinical_research_agent  # Removed for now
 
 router = APIRouter()
 
 AGENTS = {
     "care_coordinator": care_coordinator_agent,
-    "clinical_research": clinical_research_agent,
+    # "clinical_research": clinical_research_agent,  # Removed for now
 }
 
 
@@ -62,19 +62,19 @@ async def run_agent(agent_type: str, req: AgentRunRequest, db: AsyncSession = De
     return EventSourceResponse(event_generator())
 
 
-@router.post("/research/chat")
-async def chat_with_research_agent(req: AgentChatRequest, db: AsyncSession = Depends(get_db)):
-    agent = clinical_research_agent
-    task = req.message
+# @router.post("/research/chat")
+# async def chat_with_research_agent(req: AgentChatRequest, db: AsyncSession = Depends(get_db)):
+#     agent = clinical_research_agent
+#     task = req.message
 
-    async def event_generator():
-        async for event in agent.run(task, db):
-            event_type = event.get("event", "message")
-            event_data = event.get("data", {})
-            yield {"event": event_type, "data": json.dumps(event_data, default=str)}
-        await db.commit()
+#     async def event_generator():
+#         async for event in agent.run(task, db):
+#             event_type = event.get("event", "message")
+#             event_data = event.get("data", {})
+#             yield {"event": event_type, "data": json.dumps(event_data, default=str)}
+#         await db.commit()
 
-    return EventSourceResponse(event_generator())
+#     return EventSourceResponse(event_generator())
 
 
 @router.get("/runs")
