@@ -49,6 +49,7 @@ export default function Agents() {
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let currentEventType = 'message'
 
       if (reader) {
         while (true) {
@@ -61,17 +62,15 @@ export default function Agents() {
 
           for (const line of lines) {
             if (line.startsWith('event:')) {
-              const eventType = line.slice(6).trim()
-              continue
-            }
-            if (line.startsWith('data:')) {
+              currentEventType = line.slice(6).trim()
+            } else if (line.startsWith('data:')) {
               const dataStr = line.slice(5).trim()
               try {
                 const data = JSON.parse(dataStr)
-                const eventType = data.event || 'message'
-                setEvents((prev) => [...prev, { event: eventType, data }])
-              } catch {
-                // SSE format: event on separate line
+                setEvents((prev) => [...prev, { event: currentEventType, data }])
+                currentEventType = 'message' // Reset for next event
+              } catch (e) {
+                console.error('Failed to parse SSE data:', dataStr, e)
               }
             }
           }
