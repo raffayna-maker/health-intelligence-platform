@@ -7,6 +7,15 @@ model_list:
       model: ollama/qwen2.5:3b
       api_base: http://ollama:11434
 
+# Guardrails configuration (AIM cloud integration)
+guardrails:
+  - guardrail_name: aim
+    litellm_params:
+      guardrail: aim
+      mode: [pre_call, post_call]
+      api_key: aim-partner_guidepoint-47ced554202db9e09b85184a221044986a3a6a4d4f22e12c
+      default_on: true
+
 # LiteLLM settings
 litellm_settings:
   # Request timeout (30 seconds)
