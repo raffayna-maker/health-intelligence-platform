@@ -48,10 +48,9 @@ async def run_agent(agent_type: str, req: AgentRunRequest, db: AsyncSession = De
 
     async def event_generator():
         async for event in agent.run(task, db):
-            event_type = event.get("event", "message")
-            event_data = event.get("data", {})
-            data_str = json.dumps(event_data, default=str)
-            yield f"event: {event_type}\ndata: {data_str}\n\n"
+            # Embed event type inside data payload (SSE event: field unreliable through proxies)
+            data_str = json.dumps(event, default=str)
+            yield f"data: {data_str}\n\n"
         await db.commit()
 
     return StreamingResponse(

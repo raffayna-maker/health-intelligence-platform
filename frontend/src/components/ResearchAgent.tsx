@@ -23,7 +23,6 @@ export default function ResearchAgent() {
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
-      let currentEventType = 'message'
 
       if (reader) {
         while (true) {
@@ -35,24 +34,20 @@ export default function ResearchAgent() {
           buffer = lines.pop() || ''
 
           for (const line of lines) {
-            if (line.trim() === '') continue
+            if (!line.startsWith('data:')) continue
 
-            if (line.startsWith('event:')) {
-              currentEventType = line.slice(6).trim()
-            } else if (line.startsWith('data:')) {
-              const dataStr = line.slice(5).trim()
-              try {
-                const data = JSON.parse(dataStr)
-                setEvents((prev) => [...prev, { event: currentEventType, data }])
+            const dataStr = line.slice(5).trim()
+            try {
+              const parsed = JSON.parse(dataStr)
+              const eventType = parsed.event || 'message'
+              const data = parsed.data || parsed
+              setEvents((prev) => [...prev, { event: eventType, data }])
 
-                if (currentEventType === 'complete') {
-                  setSummary(data.answer || '')
-                }
-
-                currentEventType = 'message'
-              } catch {
-                // skip unparseable data
+              if (eventType === 'complete') {
+                setSummary(data.answer || '')
               }
+            } catch {
+              // skip unparseable data
             }
           }
         }

@@ -67,15 +67,20 @@ class BaseAgent(ABC):
 
     def _build_reasoning_prompt(self, task: str, iteration: int) -> str:
         history = ""
-        for mem in self.short_term_memory[-2:]:  # Reduced from 3 to 2
-            history += f"\n{mem['summary']}"
+        for mem in self.short_term_memory[-3:]:
+            history += f"\n- {mem['summary']}"
 
         # Simplified tool list - just names, no descriptions
         tools = ", ".join(self.available_tools[:4])  # Only show first 4 tools to save tokens
 
+        # If we already have tool results, push toward final_answer
+        nudge = ""
+        if self.short_term_memory and iteration >= 1:
+            nudge = "\nYou already have results above. Now provide a final_answer summarizing what you found. Do NOT call the same tool again."
+
         return f"""Task: {task}
 Tools: {tools}
-Done:{history or " nothing yet"}
+Done:{history or " nothing yet"}{nudge}
 Step {iteration + 1}/{self.max_iterations}
 
 JSON only:
@@ -210,23 +215,38 @@ OR {{"type":"final_answer","answer":"...","reasoning":"..."}}"""
                     self.short_term_memory.append({"iteration": iteration, "summary": f"Tried unknown tool: {tool_name}"})
                     continue
 
-                # Check for infinite loops (same tool with same input called 3+ times)
+                # Check for infinite loops (same tool with same input called 2+ times)
                 tool_signature = (tool_name, json.dumps(tool_input, sort_keys=True))
                 recent_calls = self.tool_call_history[-5:] if len(self.tool_call_history) >= 5 else self.tool_call_history
-                if recent_calls.count(tool_signature) >= 2:
-                    yield {"event": "message", "data": {"iteration": iteration, "message": f"Loop detected: {tool_name} called repeatedly with same input. Forcing completion."}}
-                    decision = {
-                        "type": "final_answer",
-                        "answer": f"Task could not be completed - agent stuck in loop calling {tool_name} repeatedly.",
-                        "reasoning": "Loop detection triggered"
-                    }
-                    agent_run.status = "failed"
-                    agent_run.summary = f"Loop detected at iteration {iteration}"
+                if recent_calls.count(tool_signature) >= 1:
+                    # Compile all collected results into a final answer instead of erroring
+                    results_summary = "\n".join(
+                        m["summary"] for m in self.short_term_memory
+                    )
+                    answer = results_summary or f"Results from {tool_name} have already been retrieved."
+
+                    step_final = AgentStep(
+                        agent_run_id=run_id,
+                        iteration=iteration,
+                        step_type="final_answer",
+                        content=answer,
+                    )
+                    db.add(step_final)
+
+                    agent_run.status = "completed"
+                    agent_run.summary = answer[:500]
                     agent_run.iterations = iteration + 1
                     agent_run.completed_at = datetime.utcnow()
+                    agent_run.result = {"answer": answer, "reasoning": "Auto-completed after loop detection"}
                     await db.flush()
 
-                    yield {"event": "error", "data": {"message": "Loop detected", "iteration": iteration}}
+                    yield {"event": "complete", "data": {
+                        "run_id": run_id,
+                        "iterations": iteration + 1,
+                        "answer": answer,
+                        "reasoning": "Auto-completed: compiled results from tool calls",
+                        "status": "completed",
+                    }}
                     return
 
                 self.tool_call_history.append(tool_signature)
@@ -301,8 +321,8 @@ OR {{"type":"final_answer","answer":"...","reasoning":"..."}}"""
                     await db.flush()
                     return
 
-                # Update memory
-                result_summary = json.dumps(tool_result, default=str)[:200]
+                # Update memory with more context so the LLM knows what it got
+                result_summary = json.dumps(tool_result, default=str)[:500]
                 self.short_term_memory.append({
                     "iteration": iteration,
                     "summary": f"Used {tool_name} -> {result_summary}",
