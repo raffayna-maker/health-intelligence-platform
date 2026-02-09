@@ -7,7 +7,7 @@ const tabs = [
   { path: '/documents', label: 'Documents', icon: '📄' },
   { path: '/analytics', label: 'Analytics', icon: '📈' },
   { path: '/assistant', label: 'Assistant', icon: '🤖' },
-  { path: '/agents', label: 'Follow-ups', icon: '📅' },
+  { path: '/agents', label: 'Research', icon: '🔍' },
   { path: '/reports', label: 'Reports', icon: '📋' },
   { path: '/security', label: 'Security', icon: '🔐' },
 ]

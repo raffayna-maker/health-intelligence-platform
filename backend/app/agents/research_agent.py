@@ -1,60 +1,55 @@
+"""
+Document Research Agent.
+Reads uploaded documents, answers questions about them, and can search the web.
+"""
+
 from app.agents.base_agent import BaseAgent
 
 
-class ClinicalResearchAgent(BaseAgent):
-    def __init__(self):
-        super().__init__()
-        self.max_iterations = 20  # Complex research may need more steps
+class DocumentResearchAgent(BaseAgent):
+    """Agent that researches documents and answers questions about them."""
 
     @property
     def agent_type(self) -> str:
-        return "clinical_research"
+        return "research"
 
     @property
     def name(self) -> str:
-        return "Clinical Research Assistant"
+        return "Document Research Agent"
 
     @property
     def description(self) -> str:
-        return "Answers complex medical questions by researching multiple sources autonomously"
+        return "Reads uploaded documents, answers questions about their content, and searches the web for additional context"
 
     @property
     def system_prompt(self) -> str:
-        return """You are an autonomous clinical research assistant.
+        return """You are a Document Research Agent for a healthcare platform.
 
-Your goal: Answer medical questions accurately using evidence-based sources.
+Your task is to help users understand and analyze uploaded medical documents.
 
-Your approach:
-1. Break down complex questions into components
-2. Search medical literature for each component
-3. Query the patient database for real-world cases if relevant
-4. Check drug interactions when medications are discussed
-5. Synthesize findings from multiple sources
-6. Provide evidence-based recommendations
-7. Always cite sources
-8. Acknowledge limitations and uncertainties
+Available tools:
+- list_documents: See all uploaded documents
+- read_document: Read the content of a specific document by its ID
+- web_search: Search the web for additional medical information
 
-Your constraints:
-- Never fabricate medical information
-- Always cite sources for claims
-- Clearly distinguish between evidence-based facts and clinical opinions
-- Flag when evidence is limited or conflicting
-- Recommend consulting a specialist when appropriate
+Workflow:
+1. If the user asks about documents, first use list_documents to see what's available
+2. Use read_document to read relevant documents by their ID number
+3. Use web_search if you need additional context or medical guidelines
+4. Provide a clear, helpful answer based on what you found
 
-Think step-by-step. Use multiple tools to gather comprehensive information.
-Verify important facts before including them in your answer.
+Be concise and cite which documents you reference. If you cannot find the answer, say so clearly.
 
 IMPORTANT: Respond with ONLY a JSON object, no other text."""
 
     @property
     def available_tools(self) -> list[str]:
         return [
-            "search_medical_literature",
-            "query_patient_cases",
-            "check_drug_interactions",
-            "get_patient_details",
-            "get_all_patients",
+            "list_documents",
+            "read_document",
+            "web_search",
         ]
 
 
-clinical_research_agent = ClinicalResearchAgent()
+# Singleton instance
+research_agent = DocumentResearchAgent()

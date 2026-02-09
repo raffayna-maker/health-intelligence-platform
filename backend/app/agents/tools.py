@@ -328,6 +328,104 @@ async def send_followup_email(db: AsyncSession, patient_id: str = "", **kwargs) 
     return email_result
 
 
+async def list_documents(db: AsyncSession, **kwargs) -> dict:
+    """List all uploaded documents."""
+    from app.models.document import Document
+
+    result = await db.execute(select(Document).order_by(Document.id))
+    docs = result.scalars().all()
+
+    return {
+        "total": len(docs),
+        "documents": [
+            {
+                "id": d.id,
+                "filename": d.filename,
+                "file_type": d.file_type,
+                "file_size": d.file_size,
+                "classification": d.classification,
+                "has_extracted_data": d.extracted_data is not None,
+                "uploaded_at": str(d.uploaded_at) if d.uploaded_at else None,
+            }
+            for d in docs
+        ],
+    }
+
+
+async def read_document(db: AsyncSession, document_id: int = 0, **kwargs) -> dict:
+    """Read the content of an uploaded document."""
+    import aiofiles
+    from app.models.document import Document
+
+    result = await db.execute(select(Document).where(Document.id == document_id))
+    doc = result.scalar_one_or_none()
+
+    if not doc:
+        return {"error": f"Document {document_id} not found"}
+
+    # Read raw file content
+    raw_text = ""
+    try:
+        async with aiofiles.open(doc.file_path, "r", encoding="utf-8", errors="replace") as f:
+            raw_text = await f.read()
+    except Exception as e:
+        raw_text = f"(Unable to read file: {e})"
+
+    return {
+        "id": doc.id,
+        "filename": doc.filename,
+        "file_type": doc.file_type,
+        "classification": doc.classification,
+        "extracted_data": doc.extracted_data,
+        "content": raw_text[:5000],
+        "content_length": len(raw_text),
+    }
+
+
+async def web_search(db: AsyncSession, query: str = "", **kwargs) -> dict:
+    """Search the web using DuckDuckGo Instant Answer API."""
+    import httpx
+
+    if not query:
+        return {"error": "No search query provided"}
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                "https://api.duckduckgo.com/",
+                params={"q": query, "format": "json", "no_html": "1", "skip_disambig": "1"},
+            )
+            data = response.json()
+
+        results = []
+
+        # Main abstract
+        if data.get("Abstract"):
+            results.append({
+                "title": data.get("Heading", ""),
+                "source": data.get("AbstractSource", ""),
+                "url": data.get("AbstractURL", ""),
+                "text": data["Abstract"],
+            })
+
+        # Related topics
+        for topic in (data.get("RelatedTopics") or [])[:5]:
+            if isinstance(topic, dict) and topic.get("Text"):
+                results.append({
+                    "title": topic.get("Text", "")[:100],
+                    "url": topic.get("FirstURL", ""),
+                    "text": topic.get("Text", ""),
+                })
+
+        if not results:
+            return {"query": query, "results_count": 0, "results": [], "note": "No instant answer available. Try a more specific query."}
+
+        return {"query": query, "results_count": len(results), "results": results}
+
+    except Exception as e:
+        return {"query": query, "error": f"Search failed: {str(e)}", "results": []}
+
+
 # Tool registry used by agents
 TOOL_REGISTRY = {
     "get_all_patients": {
@@ -394,5 +492,20 @@ TOOL_REGISTRY = {
         "fn": send_followup_email,
         "description": "Send follow-up appointment reminder email to a patient via Gmail SMTP",
         "parameters": {"patient_id": "string - The patient ID (e.g. PT-001)"},
+    },
+    "list_documents": {
+        "fn": list_documents,
+        "description": "List all uploaded documents with their ID, filename, type, and classification",
+        "parameters": {},
+    },
+    "read_document": {
+        "fn": read_document,
+        "description": "Read the content of an uploaded document by its ID",
+        "parameters": {"document_id": "int - The document ID number"},
+    },
+    "web_search": {
+        "fn": web_search,
+        "description": "Search the web for information using DuckDuckGo",
+        "parameters": {"query": "string - The search query"},
     },
 }

@@ -2,16 +2,16 @@ import json
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from sse_starlette.sse import EventSourceResponse
+from starlette.responses import StreamingResponse
 from app.database import get_db
 from app.models.agent_run import AgentRun, AgentStep
 from app.schemas.agent import AgentInfo, AgentRunRequest, AgentChatRequest, AgentRunResponse, AgentStepResponse
-from app.agents.followup_agent import followup_agent
+from app.agents.research_agent import research_agent
 
 router = APIRouter()
 
 AGENTS = {
-    "followup": followup_agent,
+    "research": research_agent,
 }
 
 
@@ -44,37 +44,24 @@ async def run_agent(agent_type: str, req: AgentRunRequest, db: AsyncSession = De
     if not agent:
         return {"error": f"Unknown agent type: {agent_type}"}
 
-    task = req.task or (
-        "Find patients who haven't had appointments in 90+ days and send them follow-up reminder emails."
-        if agent_type == "followup"
-        else "Complete the requested task."
-    )
+    task = req.task or "List the available documents and summarize what you find."
 
     async def event_generator():
         async for event in agent.run(task, db):
             event_type = event.get("event", "message")
             event_data = event.get("data", {})
             data_str = json.dumps(event_data, default=str)
-            # Yield raw bytes to bypass sse-starlette ensure_bytes processing
-            yield f"event: {event_type}\ndata: {data_str}\n\n".encode("utf-8")
+            yield f"event: {event_type}\ndata: {data_str}\n\n"
         await db.commit()
 
-    return EventSourceResponse(event_generator())
-
-
-# @router.post("/research/chat")
-# async def chat_with_research_agent(req: AgentChatRequest, db: AsyncSession = Depends(get_db)):
-#     agent = clinical_research_agent
-#     task = req.message
-
-#     async def event_generator():
-#         async for event in agent.run(task, db):
-#             event_type = event.get("event", "message")
-#             event_data = event.get("data", {})
-#             yield {"event": event_type, "data": json.dumps(event_data, default=str)}
-#         await db.commit()
-
-#     return EventSourceResponse(event_generator())
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/runs")
