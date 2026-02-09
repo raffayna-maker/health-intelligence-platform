@@ -45,7 +45,7 @@ services:
       DATABASE_URL: postgresql://healthcare:${POSTGRES_PASSWORD:-healthcare123}@postgres:5432/litellm
     volumes:
       - ./litellm-config.yaml:/app/config.yaml
-    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "8"]
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "4"]
     depends_on:
       postgres:
         condition: service_healthy
