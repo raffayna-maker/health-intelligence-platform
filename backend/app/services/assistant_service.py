@@ -1,3 +1,4 @@
+import re
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -51,16 +52,32 @@ class AssistantService:
         # Step 2: Retrieve context via RAG
         context = ""
         sources = []
-        
+
         if use_rag:
             try:
+                # Direct lookup if patient_id provided or mentioned in question
+                lookup_id = patient_id
+                if not lookup_id:
+                    match = re.search(r'PT-\d{3}', question, re.IGNORECASE)
+                    if match:
+                        lookup_id = match.group(0).upper()
+
+                if lookup_id:
+                    direct = chromadb_service.get_by_id(lookup_id)
+                    if direct and direct.get("documents") and direct["documents"]:
+                        doc = direct["documents"][0]
+                        metadata = direct["metadatas"][0] if direct.get("metadatas") else {}
+                        context += f"\n\n[Source 1 - Direct Match]: {doc}"
+                        sources.append({"content": doc[:200], "metadata": metadata})
+
+                # Also do semantic search for additional context
                 query_embedding = await ollama_service.embed(question)
                 results = chromadb_service.search(query_embedding, n_results=5)
-                
+
                 if results and results.get("documents") and results["documents"][0]:
                     for i, doc in enumerate(results["documents"][0]):
                         metadata = results["metadatas"][0][i] if results.get("metadatas") else {}
-                        context += f"\n\n[Source {i+1}]: {doc}"
+                        context += f"\n\n[Source {len(sources) + 1}]: {doc}"
                         sources.append({
                             "content": doc[:200],
                             "metadata": metadata
