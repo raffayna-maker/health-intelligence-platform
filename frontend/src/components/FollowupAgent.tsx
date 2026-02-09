@@ -1,4 +1,4 @@
-// Appointment Follow-up Agent Component v2.1 - Feb 6 2026
+// Appointment Follow-up Agent Component v2.2 - Feb 9 2026
 import { useState } from 'react'
 import { runAgentStream } from '../api/client'
 
@@ -7,7 +7,7 @@ interface AgentEvent {
   data: any
 }
 
-console.log('🔄 FollowupAgent.tsx v2.1 loaded - SSE parsing active')
+console.log('🔄 FollowupAgent.tsx v2.2 loaded - SSE parsing active')
 
 export default function FollowupAgent() {
   const [running, setRunning] = useState(false)
@@ -77,8 +77,14 @@ export default function FollowupAgent() {
       decision: '💡',
       tool_executing: '⚙️',
       tool_result: '📊',
+      tool_error: '⚠️',
+      security_scan: '🔒',
+      blocked: '🚫',
       complete: '✅',
       error: '❌',
+      timeout: '⏰',
+      escalated: '🙋',
+      message: '💬',
     }
     return icons[event] || '📝'
   }
@@ -145,6 +151,30 @@ export default function FollowupAgent() {
       )
     }
 
+    if (event === 'timeout') {
+      return (
+        <div key={idx} className="border-l-4 border-orange-500 pl-4 py-3 bg-orange-50 rounded-r-lg mb-2">
+          <div className="flex items-center gap-2 mb-1">
+            <span>⏰</span>
+            <span className="font-semibold text-orange-700">Timeout</span>
+          </div>
+          <p className="text-sm text-gray-600">Agent reached maximum iterations ({data.iterations})</p>
+        </div>
+      )
+    }
+
+    if (event === 'blocked') {
+      return (
+        <div key={idx} className="border-l-4 border-red-500 pl-4 py-3 bg-red-50 rounded-r-lg mb-2">
+          <div className="flex items-center gap-2 mb-1">
+            <span>🚫</span>
+            <span className="font-semibold text-red-700">Blocked by Security</span>
+          </div>
+          <p className="text-sm text-red-600">Stage: {data.stage}</p>
+        </div>
+      )
+    }
+
     if (event === 'error') {
       return (
         <div key={idx} className="border-l-4 border-red-500 pl-4 py-3 bg-red-50 rounded-r-lg mb-2">
@@ -155,6 +185,27 @@ export default function FollowupAgent() {
           <p className="text-sm text-red-600">{data.message}</p>
         </div>
       )
+    }
+
+    if (event === 'tool_executing') {
+      return (
+        <div key={idx} className="border-l-4 border-yellow-400 pl-4 py-2 bg-yellow-50 rounded-r-lg mb-1 text-sm">
+          <span>⚙️</span> Running <span className="font-medium">{data.tool}</span>...
+        </div>
+      )
+    }
+
+    if (event === 'reasoning') {
+      return (
+        <div key={idx} className="border-l-4 border-purple-300 pl-4 py-2 bg-purple-50 rounded-r-lg mb-1 text-sm text-purple-700">
+          <span>🤔</span> Thinking... <span className="text-xs text-gray-500">(Step {(data.iteration ?? 0) + 1})</span>
+        </div>
+      )
+    }
+
+    // Hide security_scan events from UI (they add noise)
+    if (event === 'security_scan') {
+      return null
     }
 
     // Generic event rendering

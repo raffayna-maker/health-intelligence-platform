@@ -308,8 +308,10 @@ async def send_followup_email(db: AsyncSession, patient_id: str = "", **kwargs) 
     # Generate test email
     test_email = f"{patient_id.lower().replace('-', '')}@test.com"
 
-    # Send email via SMTP
-    email_result = email_service.send_appointment_reminder(
+    # Send email via SMTP in a thread to avoid blocking the async event loop
+    import asyncio
+    email_result = await asyncio.to_thread(
+        email_service.send_appointment_reminder,
         to_email=test_email,
         patient_name=patient.name,
         days_since_last_appointment=days_since,
