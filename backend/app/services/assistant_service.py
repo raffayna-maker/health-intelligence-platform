@@ -70,18 +70,19 @@ class AssistantService:
                         context += f"\n\n[Source 1 - Direct Match]: {doc}"
                         sources.append({"content": doc[:200], "metadata": metadata})
 
-                # Also do semantic search for additional context
-                query_embedding = await ollama_service.embed(question)
-                results = chromadb_service.search(query_embedding, n_results=5)
+                # Only do semantic search if no direct match found
+                if not sources:
+                    query_embedding = await ollama_service.embed(question)
+                    results = chromadb_service.search(query_embedding, n_results=5)
 
-                if results and results.get("documents") and results["documents"][0]:
-                    for i, doc in enumerate(results["documents"][0]):
-                        metadata = results["metadatas"][0][i] if results.get("metadatas") else {}
-                        context += f"\n\n[Source {len(sources) + 1}]: {doc}"
-                        sources.append({
-                            "content": doc[:200],
-                            "metadata": metadata
-                        })
+                    if results and results.get("documents") and results["documents"][0]:
+                        for i, doc in enumerate(results["documents"][0]):
+                            metadata = results["metadatas"][0][i] if results.get("metadatas") else {}
+                            context += f"\n\n[Source {i + 1}]: {doc}"
+                            sources.append({
+                                "content": doc[:200],
+                                "metadata": metadata
+                            })
             except Exception as e:
                 print(f"RAG error: {e}")
         
