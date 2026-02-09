@@ -54,10 +54,9 @@ async def run_agent(agent_type: str, req: AgentRunRequest, db: AsyncSession = De
         async for event in agent.run(task, db):
             event_type = event.get("event", "message")
             event_data = event.get("data", {})
-            yield {
-                "event": event_type,
-                "data": json.dumps(event_data, default=str),
-            }
+            data_str = json.dumps(event_data, default=str)
+            # Yield raw bytes to bypass sse-starlette ensure_bytes processing
+            yield f"event: {event_type}\ndata: {data_str}\n\n".encode("utf-8")
         await db.commit()
 
     return EventSourceResponse(event_generator())
