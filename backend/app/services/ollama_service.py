@@ -78,8 +78,14 @@ class LLMService:
 
     async def is_available(self) -> bool:
         try:
+            bedrock = boto3.client(
+                "bedrock",
+                region_name=self.region,
+                aws_access_key_id=settings.aws_access_key_id,
+                aws_secret_access_key=settings.aws_secret_access_key,
+            )
             await asyncio.to_thread(
-                self.client.list_foundation_models, byOutputModality="TEXT"
+                bedrock.list_foundation_models, byOutputModality="TEXT"
             )
             return True
         except Exception:
