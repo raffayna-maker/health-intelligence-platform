@@ -354,7 +354,6 @@ async def list_documents(db: AsyncSession, **kwargs) -> dict:
 
 async def read_document(db: AsyncSession, document_id: int = 0, **kwargs) -> dict:
     """Read the content of an uploaded document."""
-    import aiofiles
     from app.models.document import Document
 
     result = await db.execute(select(Document).where(Document.id == document_id))
@@ -363,22 +362,54 @@ async def read_document(db: AsyncSession, document_id: int = 0, **kwargs) -> dic
     if not doc:
         return {"error": f"Document {document_id} not found"}
 
-    # Read raw file content
-    raw_text = ""
-    try:
-        async with aiofiles.open(doc.file_path, "r", encoding="utf-8", errors="replace") as f:
-            raw_text = await f.read()
-    except Exception as e:
-        raw_text = f"(Unable to read file: {e})"
+    # Priority 1: Return extracted_data if available (already processed via Documents tab)
+    if doc.extracted_data:
+        content = json.dumps(doc.extracted_data, indent=2) if isinstance(doc.extracted_data, dict) else str(doc.extracted_data)
+        return {
+            "id": doc.id,
+            "filename": doc.filename,
+            "file_type": doc.file_type,
+            "classification": doc.classification,
+            "content": content[:5000],
+            "source": "extracted_data",
+        }
+
+    # Priority 2: For PDFs, use PyPDF2 to extract text
+    is_pdf = (doc.file_type and "pdf" in doc.file_type.lower()) or (doc.filename and doc.filename.lower().endswith(".pdf"))
+    content = ""
+
+    if is_pdf:
+        try:
+            from PyPDF2 import PdfReader
+            reader = PdfReader(doc.file_path)
+            pages = []
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    pages.append(text.strip())
+            content = "\n\n".join(pages)
+            if not content:
+                content = "(PDF contains no extractable text — may be a scanned image.)"
+        except ImportError:
+            content = "(PDF library not available. Please extract this document via the Documents tab first.)"
+        except Exception as e:
+            content = f"(Unable to extract PDF text: {e})"
+    else:
+        # Priority 3: Read as plain text for non-PDF files
+        import aiofiles
+        try:
+            async with aiofiles.open(doc.file_path, "r", encoding="utf-8", errors="replace") as f:
+                content = await f.read()
+        except Exception as e:
+            content = f"(Unable to read file: {e})"
 
     return {
         "id": doc.id,
         "filename": doc.filename,
         "file_type": doc.file_type,
         "classification": doc.classification,
-        "extracted_data": doc.extracted_data,
-        "content": raw_text[:5000],
-        "content_length": len(raw_text),
+        "content": content[:5000],
+        "content_length": len(content),
     }
 
 
