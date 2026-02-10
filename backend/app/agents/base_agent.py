@@ -169,21 +169,32 @@ OR {{"type":"final_answer","answer":"...","reasoning":"..."}}"""
             # --- STEP 2: PARSE decision ---
             decision = None
             cleaned = raw_reasoning.strip()
-            # LLM sometimes outputs Python-style single quotes instead of JSON double quotes
-            cleaned_fixed = cleaned.replace("'", '"')
 
-            for attempt in [cleaned, cleaned_fixed]:
-                if decision:
-                    break
+            # Try json.loads first (standard JSON)
+            try:
+                decision = json.loads(cleaned)
+            except json.JSONDecodeError:
+                # Try to extract JSON substring
                 try:
-                    decision = json.loads(attempt)
-                except json.JSONDecodeError:
-                    # Try to extract JSON substring
+                    start = cleaned.find("{")
+                    end = cleaned.rfind("}") + 1
+                    if start >= 0 and end > start:
+                        decision = json.loads(cleaned[start:end])
+                except Exception:
+                    pass
+
+            # Fallback: ast.literal_eval handles Python-style single quotes
+            # e.g. {'document_id': 3} mixed with "double quoted" strings
+            if not decision:
+                import ast
+                try:
+                    decision = ast.literal_eval(cleaned)
+                except Exception:
                     try:
-                        start = attempt.find("{")
-                        end = attempt.rfind("}") + 1
+                        start = cleaned.find("{")
+                        end = cleaned.rfind("}") + 1
                         if start >= 0 and end > start:
-                            decision = json.loads(attempt[start:end])
+                            decision = ast.literal_eval(cleaned[start:end])
                     except Exception:
                         pass
 
