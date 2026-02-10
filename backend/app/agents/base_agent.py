@@ -73,10 +73,12 @@ class BaseAgent(ABC):
         # Simplified tool list - just names, no descriptions
         tools = ", ".join(self.available_tools[:4])  # Only show first 4 tools to save tokens
 
-        # If we already have tool results, push toward final_answer
+        # Only nudge toward final_answer after 3+ iterations (give agent time to use multiple tools)
         nudge = ""
-        if self.short_term_memory and iteration >= 1:
-            nudge = "\nYou already have results above. Now provide a final_answer summarizing what you found. Do NOT call the same tool again."
+        if iteration >= 3:
+            nudge = "\nYou have enough information. Provide a final_answer now."
+        elif self.short_term_memory and iteration >= 1:
+            nudge = "\nUse a DIFFERENT tool if needed, or provide a final_answer. Do NOT repeat a tool you already used."
 
         return f"""Task: {task}
 Tools: {tools}
@@ -183,15 +185,15 @@ OR {{"type":"final_answer","answer":"...","reasoning":"..."}}"""
             # If still no valid decision, try to infer intent
             if not decision or "type" not in decision:
                 lower_text = raw_reasoning.lower()
-                if "final_answer" in lower_text or (iteration >= self.max_iterations - 2):
-                    # Treat as final answer if near end or explicitly mentioned
+                if "final_answer" in lower_text or (iteration >= self.max_iterations - 2) or self.short_term_memory:
+                    # Treat as final answer if near end, explicitly mentioned, or we already have results
                     decision = {
                         "type": "final_answer",
                         "answer": raw_reasoning,
                         "reasoning": "Inferred from non-JSON response"
                     }
                 else:
-                    # Default to trying first tool as a fallback
+                    # Default to trying first tool only on first iteration
                     decision = {
                         "type": "use_tool",
                         "tool": self.available_tools[0] if self.available_tools else "none",
