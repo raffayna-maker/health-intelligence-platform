@@ -140,9 +140,11 @@ class BaseAgent(ABC):
         # Simplified tool list - just names, no descriptions
         tools = ", ".join(self.available_tools[:4])  # Only show first 4 tools to save tokens
 
-        # Only nudge toward final_answer after 3+ iterations (give agent time to use multiple tools)
+        # Nudge toward final_answer based on progress
         nudge = ""
-        if iteration >= 3:
+        if iteration >= 2 and len(self.short_term_memory) >= 2:
+            nudge = "\nYou have ALL the information needed. You MUST respond with a final_answer NOW. Do NOT call any more tools."
+        elif iteration >= 3:
             nudge = "\nYou have enough information. Provide a final_answer now."
         elif self.short_term_memory and iteration >= 1:
             nudge = "\nUse a DIFFERENT tool if needed, or provide a final_answer. Do NOT repeat a tool you already used."
@@ -256,11 +258,21 @@ OR {{"type":"final_answer","answer":"...","reasoning":"..."}}"""
                 tool_signature = (tool_name, json.dumps(tool_input, sort_keys=True))
                 recent_calls = self.tool_call_history[-5:] if len(self.tool_call_history) >= 5 else self.tool_call_history
                 if recent_calls.count(tool_signature) >= 1:
-                    # Compile all collected results into a final answer instead of erroring
+                    # Synthesize a proper answer from collected data via LLM
                     results_summary = "\n".join(
                         m["summary"] for m in self.short_term_memory
                     )
-                    answer = results_summary or f"Results from {tool_name} have already been retrieved."
+                    try:
+                        synthesis_prompt = f"Answer this question: {task}\n\nCollected data:\n{results_summary[:2000]}\n\nProvide a clear, helpful answer in plain text. No JSON."
+                        answer = await ollama_service.generate(
+                            synthesis_prompt,
+                            system="You are a medical document assistant. Summarize the data into a clear answer. Plain text only.",
+                            temperature=0.1,
+                        )
+                        if not answer or len(answer.strip()) < 10:
+                            answer = results_summary
+                    except Exception:
+                        answer = results_summary
 
                     step_final = AgentStep(
                         agent_run_id=run_id,
