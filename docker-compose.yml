@@ -28,13 +28,6 @@ services:
     environment:
       ANONYMIZED_TELEMETRY: "false"
 
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_models:/root/.ollama
-
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     ports:
@@ -42,6 +35,9 @@ services:
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
       AIM_API_KEY: ${AIM_API_KEY}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION_NAME: ${AWS_REGION:-us-east-1}
       DATABASE_URL: postgresql://healthcare:${POSTGRES_PASSWORD:-healthcare123}@postgres:5432/litellm
     volumes:
       - ./litellm-config.yaml:/app/config.yaml
@@ -49,8 +45,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      ollama:
-        condition: service_started
 
   backend:
     build:
@@ -64,7 +58,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://healthcare:${POSTGRES_PASSWORD:-healthcare123}@postgres:5432/healthcare
       CHROMADB_HOST: chromadb
       CHROMADB_PORT: 8000
-      OLLAMA_BASE_URL: http://ollama:11434
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
       LITELLM_BASE_URL: http://litellm:4000
       UPLOAD_DIR: /app/uploads
     volumes:
@@ -74,8 +70,6 @@ services:
       postgres:
         condition: service_healthy
       chromadb:
-        condition: service_started
-      ollama:
         condition: service_started
       litellm:
         condition: service_started
@@ -105,5 +99,4 @@ services:
 volumes:
   pgdata:
   chromadata:
-  ollama_models:
   uploads:

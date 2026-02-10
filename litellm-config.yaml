@@ -2,10 +2,9 @@
 
 # Model definitions
 model_list:
-  - model_name: ollama-qwen
+  - model_name: bedrock-sonnet
     litellm_params:
-      model: ollama/qwen2.5:3b
-      api_base: http://ollama:11434
+      model: bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0
 
 # Guardrails configuration (AIM cloud integration)
 guardrails:

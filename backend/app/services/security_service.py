@@ -133,7 +133,7 @@ class AIMClient:
 
         try:
             payload = {
-                "model": "ollama-qwen",
+                "model": "bedrock-sonnet",
                 "messages": [{"role": "user", "content": content}],
                 "max_tokens": 1,
                 "stream": False,

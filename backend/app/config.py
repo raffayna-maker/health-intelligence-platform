@@ -13,10 +13,18 @@ class Settings(BaseSettings):
     chromadb_host: str = Field(default="chromadb", env="CHROMADB_HOST")
     chromadb_port: int = Field(default=8000, env="CHROMADB_PORT")
     
-    # Ollama
-    ollama_base_url: str = Field(default="http://ollama:11434", env="OLLAMA_BASE_URL")
-    ollama_model: str = Field(default="qwen2.5:3b", env="OLLAMA_MODEL")
-    ollama_embed_model: str = Field(default="nomic-embed-text", env="OLLAMA_EMBED_MODEL")
+    # AWS Bedrock
+    aws_access_key_id: str = Field(default="", env="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: str = Field(default="", env="AWS_SECRET_ACCESS_KEY")
+    aws_region: str = Field(default="us-east-1", env="AWS_REGION")
+    aws_bedrock_model_id: str = Field(
+        default="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        env="AWS_BEDROCK_MODEL_ID",
+    )
+    aws_bedrock_embed_model_id: str = Field(
+        default="amazon.titan-embed-text-v2:0",
+        env="AWS_BEDROCK_EMBED_MODEL_ID",
+    )
     
     # LiteLLM
     litellm_base_url: str = Field(default="http://litellm:4000", env="LITELLM_BASE_URL")
