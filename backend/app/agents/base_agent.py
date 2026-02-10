@@ -168,19 +168,24 @@ OR {{"type":"final_answer","answer":"...","reasoning":"..."}}"""
 
             # --- STEP 2: PARSE decision ---
             decision = None
-            try:
-                # Try direct parse first
-                decision = json.loads(raw_reasoning.strip())
-            except json.JSONDecodeError:
-                # Try to extract JSON from response
+            cleaned = raw_reasoning.strip()
+            # LLM sometimes outputs Python-style single quotes instead of JSON double quotes
+            cleaned_fixed = cleaned.replace("'", '"')
+
+            for attempt in [cleaned, cleaned_fixed]:
+                if decision:
+                    break
                 try:
-                    start = raw_reasoning.find("{")
-                    end = raw_reasoning.rfind("}") + 1
-                    if start >= 0 and end > start:
-                        json_str = raw_reasoning[start:end]
-                        decision = json.loads(json_str)
-                except Exception:
-                    pass
+                    decision = json.loads(attempt)
+                except json.JSONDecodeError:
+                    # Try to extract JSON substring
+                    try:
+                        start = attempt.find("{")
+                        end = attempt.rfind("}") + 1
+                        if start >= 0 and end > start:
+                            decision = json.loads(attempt[start:end])
+                    except Exception:
+                        pass
 
             # If still no valid decision, try to infer intent
             if not decision or "type" not in decision:
