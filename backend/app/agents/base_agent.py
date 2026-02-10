@@ -56,6 +56,73 @@ class BaseAgent(ABC):
     def available_tools(self) -> list[str]:
         ...
 
+    def _parse_decision(self, raw: str) -> dict:
+        """Parse LLM output into a decision dict. Handles JSON, Python dicts, and malformed output."""
+        import ast
+        import re
+
+        cleaned = raw.strip()
+
+        # Method 1: Standard JSON
+        for text in [cleaned, cleaned[cleaned.find("{"):cleaned.rfind("}") + 1] if "{" in cleaned else ""]:
+            if not text:
+                continue
+            try:
+                result = json.loads(text)
+                if isinstance(result, dict) and "type" in result:
+                    return result
+            except Exception:
+                pass
+
+        # Method 2: Python literal eval (handles single quotes)
+        for text in [cleaned, cleaned[cleaned.find("{"):cleaned.rfind("}") + 1] if "{" in cleaned else ""]:
+            if not text:
+                continue
+            try:
+                result = ast.literal_eval(text)
+                if isinstance(result, dict) and "type" in result:
+                    return result
+            except Exception:
+                pass
+
+        # Method 3: Regex extraction — look for tool call patterns regardless of quote style
+        if "use_tool" in cleaned:
+            tool_match = re.search(r"""["']?tool["']?\s*:\s*["'](\w+)["']""", cleaned)
+            if tool_match and tool_match.group(1) in self.available_tools:
+                tool_name = tool_match.group(1)
+                input_dict = {}
+                # Extract document_id (integer param)
+                doc_match = re.search(r"""["']?document_id["']?\s*:\s*(\d+)""", cleaned)
+                if doc_match:
+                    input_dict["document_id"] = int(doc_match.group(1))
+                # Extract query (string param)
+                query_match = re.search(r"""["']query["']\s*:\s*["']([^"']+)["']""", cleaned)
+                if query_match:
+                    input_dict["query"] = query_match.group(1)
+                return {
+                    "type": "use_tool",
+                    "tool": tool_name,
+                    "input": input_dict,
+                    "reasoning": "Extracted via pattern matching",
+                }
+
+        # Method 4: Infer intent from text
+        lower = cleaned.lower()
+        if "final_answer" in lower or self.short_term_memory:
+            return {
+                "type": "final_answer",
+                "answer": cleaned,
+                "reasoning": "Inferred from non-JSON response",
+            }
+
+        # Method 5: Last resort — try first tool on iteration 0
+        return {
+            "type": "use_tool",
+            "tool": self.available_tools[0] if self.available_tools else "none",
+            "input": {},
+            "reasoning": "Fallback — first available tool",
+        }
+
     def _build_tool_descriptions(self) -> str:
         lines = []
         for tool_name in self.available_tools:
@@ -167,55 +234,7 @@ OR {{"type":"final_answer","answer":"...","reasoning":"..."}}"""
                 return
 
             # --- STEP 2: PARSE decision ---
-            decision = None
-            cleaned = raw_reasoning.strip()
-
-            # Try json.loads first (standard JSON)
-            try:
-                decision = json.loads(cleaned)
-            except json.JSONDecodeError:
-                # Try to extract JSON substring
-                try:
-                    start = cleaned.find("{")
-                    end = cleaned.rfind("}") + 1
-                    if start >= 0 and end > start:
-                        decision = json.loads(cleaned[start:end])
-                except Exception:
-                    pass
-
-            # Fallback: ast.literal_eval handles Python-style single quotes
-            # e.g. {'document_id': 3} mixed with "double quoted" strings
-            if not decision:
-                import ast
-                try:
-                    decision = ast.literal_eval(cleaned)
-                except Exception:
-                    try:
-                        start = cleaned.find("{")
-                        end = cleaned.rfind("}") + 1
-                        if start >= 0 and end > start:
-                            decision = ast.literal_eval(cleaned[start:end])
-                    except Exception:
-                        pass
-
-            # If still no valid decision, try to infer intent
-            if not decision or "type" not in decision:
-                lower_text = raw_reasoning.lower()
-                if "final_answer" in lower_text or (iteration >= self.max_iterations - 2) or self.short_term_memory:
-                    # Treat as final answer if near end, explicitly mentioned, or we already have results
-                    decision = {
-                        "type": "final_answer",
-                        "answer": raw_reasoning,
-                        "reasoning": "Inferred from non-JSON response"
-                    }
-                else:
-                    # Default to trying first tool only on first iteration
-                    decision = {
-                        "type": "use_tool",
-                        "tool": self.available_tools[0] if self.available_tools else "none",
-                        "input": {},
-                        "reasoning": "Fallback - retrying with first available tool"
-                    }
+            decision = self._parse_decision(raw_reasoning)
 
             yield {"event": "decision", "data": {"iteration": iteration, "decision_type": decision.get("type"), "details": decision}}
 
