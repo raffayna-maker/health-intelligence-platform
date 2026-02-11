@@ -143,10 +143,10 @@ export default function Agents() {
           <div className="flex gap-2 flex-wrap">
             <span className="text-xs text-gray-500">Stage: {data.stage}</span>
             {data.tool && <span className="text-xs text-gray-500">Tool: {data.tool}</span>}
-            <span className={data.scan?.hl_verdict === 'pass' ? 'badge-pass' : 'badge-block'}>
+            <span className={data.scan?.hl_verdict === 'pass' ? 'badge-pass' : data.scan?.hl_verdict === 'block' ? 'badge-block' : 'badge-error'}>
               HL: {data.scan?.hl_verdict} ({data.scan?.hl_scan_time_ms}ms)
             </span>
-            <span className={data.scan?.aim_verdict === 'pass' ? 'badge-pass' : 'badge-block'}>
+            <span className={data.scan?.aim_verdict === 'pass' ? 'badge-pass' : data.scan?.aim_verdict === 'block' ? 'badge-block' : 'badge-error'}>
               AIM: {data.scan?.aim_verdict} ({data.scan?.aim_scan_time_ms}ms)
             </span>
           </div>
@@ -327,7 +327,10 @@ export default function Agents() {
                   {step.security_scans && (
                     <div className="mt-1 flex gap-2">
                       {Object.entries(step.security_scans).map(([key, scan]: [string, any]) => (
-                        <span key={key} className={scan?.final_verdict === 'pass' || scan?.hl_verdict === 'pass' ? 'badge-pass' : 'badge-block'}>
+                        <span key={key} className={
+                          (scan?.final_verdict === 'pass' || scan?.hl_verdict === 'pass') ? 'badge-pass' :
+                          (scan?.final_verdict === 'block' || scan?.hl_verdict === 'block') ? 'badge-block' : 'badge-error'
+                        }>
                           {key}: {scan?.final_verdict || scan?.hl_verdict || 'N/A'}
                         </span>
                       ))}

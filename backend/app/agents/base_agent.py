@@ -13,6 +13,7 @@ from app.services.ollama_service import ollama_service
 from app.services.security_service import dual_security_scan, log_security_scan
 from app.models.agent_run import AgentRun, AgentStep
 from app.agents.tools import TOOL_REGISTRY
+from app.exceptions import AIMBlockedException
 
 
 class BaseAgent(ABC):
@@ -196,6 +197,15 @@ OR {{"type":"final_answer","answer":"...","reasoning":"..."}}"""
                         reasoning_prompt, system=self.system_prompt, temperature=0.2
                     )
 
+            except AIMBlockedException as e:
+                yield {"event": "blocked", "data": {"iteration": iteration, "stage": "reasoning", "message": e.reason}}
+                agent_run.status = "blocked"
+                agent_run.summary = f"Blocked by AIM at iteration {iteration}: {e.reason}"
+                agent_run.iterations = iteration + 1
+                agent_run.completed_at = datetime.utcnow()
+                await db.flush()
+                return
+
             except Exception as e:
                 error_msg = str(e)
                 yield {"event": "error", "data": {"message": f"LLM error: {error_msg}", "iteration": iteration}}
@@ -271,6 +281,8 @@ OR {{"type":"final_answer","answer":"...","reasoning":"..."}}"""
                         )
                         if not answer or len(answer.strip()) < 10:
                             answer = results_summary
+                    except AIMBlockedException:
+                        answer = results_summary
                     except Exception:
                         answer = results_summary
 

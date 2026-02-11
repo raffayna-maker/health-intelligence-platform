@@ -62,8 +62,8 @@ export default function Analytics() {
     if (!scan) return null
     return (
       <div className="flex gap-2 mt-2">
-        <span className={scan.hl_verdict === 'pass' ? 'badge-pass' : 'badge-block'}>HL: {scan.hl_verdict}</span>
-        <span className={scan.aim_verdict === 'pass' ? 'badge-pass' : 'badge-block'}>AIM: {scan.aim_verdict}</span>
+        <span className={scan.hl_verdict === 'pass' ? 'badge-pass' : scan.hl_verdict === 'block' ? 'badge-block' : 'badge-error'}>HL: {scan.hl_verdict}</span>
+        <span className={scan.aim_verdict === 'pass' ? 'badge-pass' : scan.aim_verdict === 'block' ? 'badge-block' : 'badge-error'}>AIM: {scan.aim_verdict}</span>
       </div>
     )
   }

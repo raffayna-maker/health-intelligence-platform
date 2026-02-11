@@ -1,8 +1,10 @@
+import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.models.patient import Patient
 from app.services.ollama_service import ollama_service
 from app.services.security_service import dual_security_scan
+from app.exceptions import AIMBlockedException
 
 
 RISK_SYSTEM = """You are a clinical risk assessment AI.
@@ -75,18 +77,20 @@ class AnalyticsService:
         )
 
         input_scan = await dual_security_scan(
-            content=patient_info, scan_type="input", feature="risk_calculation", db=db
+            content=patient_info, scan_type="input", feature_name="risk_calculation"
         )
-        if input_scan.blocked:
-            return {"patient_id": patient_id, "blocked": True, "security_scan": input_scan.model_dump()}
+        if input_scan["blocked"]:
+            return {"patient_id": patient_id, "blocked": True, "security_scan": input_scan}
 
-        ai_result = await ollama_service.generate_structured(
-            f"Assess risk for this patient:\n{patient_info}", system=RISK_SYSTEM
-        )
+        try:
+            ai_result = await ollama_service.generate_structured(
+                f"Assess risk for this patient:\n{patient_info}", system=RISK_SYSTEM
+            )
+        except AIMBlockedException as e:
+            return {"patient_id": patient_id, "blocked": True, "blocked_by": "AIM", "blocked_reason": e.reason}
 
-        import json
         output_scan = await dual_security_scan(
-            content=json.dumps(ai_result), scan_type="output", feature="risk_calculation", db=db
+            content=json.dumps(ai_result), scan_type="output", feature_name="risk_calculation"
         )
 
         new_score = ai_result.get("risk_score", patient.risk_score)
@@ -100,7 +104,7 @@ class AnalyticsService:
             "risk_factors": ai_result.get("risk_factors", []),
             "recommendation": ai_result.get("recommendation", ""),
             "blocked": False,
-            "security_scan": output_scan.model_dump(),
+            "security_scan": output_scan,
         }
 
     async def analyze_trends(self, query: str, db: AsyncSession) -> dict:
@@ -119,25 +123,28 @@ class AnalyticsService:
         summary += f"Average risk score: {avg_risk:.1f}"
 
         input_scan = await dual_security_scan(
-            content=query, scan_type="input", feature="trend_analysis", db=db
+            content=query, scan_type="input", feature_name="trend_analysis"
         )
-        if input_scan.blocked:
-            return {"query": query, "blocked": True, "security_scan": input_scan.model_dump()}
+        if input_scan["blocked"]:
+            return {"query": query, "blocked": True, "security_scan": input_scan}
 
-        prompt = f"Data Summary:\n{summary}\n\nAnalysis Query: {query}"
-        analysis = await ollama_service.generate(prompt, system=TREND_SYSTEM)
+        try:
+            prompt = f"Data Summary:\n{summary}\n\nAnalysis Query: {query}"
+            analysis = await ollama_service.generate(prompt, system=TREND_SYSTEM)
+        except AIMBlockedException as e:
+            return {"query": query, "blocked": True, "blocked_by": "AIM", "blocked_reason": e.reason}
 
         output_scan = await dual_security_scan(
-            content=analysis, scan_type="output", feature="trend_analysis", db=db
+            content=analysis, scan_type="output", feature_name="trend_analysis"
         )
-        if output_scan.blocked:
-            return {"query": query, "blocked": True, "security_scan": output_scan.model_dump()}
+        if output_scan["blocked"]:
+            return {"query": query, "blocked": True, "security_scan": output_scan}
 
         return {
             "query": query,
             "analysis": analysis,
             "blocked": False,
-            "security_scan": output_scan.model_dump(),
+            "security_scan": output_scan,
         }
 
     async def predict_readmission(self, patient_id: str, db: AsyncSession) -> dict:
@@ -153,14 +160,17 @@ class AnalyticsService:
         )
 
         input_scan = await dual_security_scan(
-            content=patient_info, scan_type="input", feature="readmission_prediction", db=db
+            content=patient_info, scan_type="input", feature_name="readmission_prediction"
         )
-        if input_scan.blocked:
-            return {"patient_id": patient_id, "blocked": True, "security_scan": input_scan.model_dump()}
+        if input_scan["blocked"]:
+            return {"patient_id": patient_id, "blocked": True, "security_scan": input_scan}
 
-        ai_result = await ollama_service.generate_structured(
-            f"Predict readmission risk:\n{patient_info}", system=READMISSION_SYSTEM
-        )
+        try:
+            ai_result = await ollama_service.generate_structured(
+                f"Predict readmission risk:\n{patient_info}", system=READMISSION_SYSTEM
+            )
+        except AIMBlockedException as e:
+            return {"patient_id": patient_id, "blocked": True, "blocked_by": "AIM", "blocked_reason": e.reason}
 
         return {
             "patient_id": patient_id,
@@ -168,7 +178,7 @@ class AnalyticsService:
             "factors": ai_result.get("factors", []),
             "recommendation": ai_result.get("recommendation", ""),
             "blocked": False,
-            "security_scan": input_scan.model_dump(),
+            "security_scan": input_scan,
         }
 
 

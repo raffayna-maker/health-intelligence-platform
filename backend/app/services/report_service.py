@@ -8,6 +8,7 @@ from app.models.agent_run import AgentRun
 from app.models.report import Report
 from app.services.ollama_service import ollama_service
 from app.services.security_service import dual_security_scan
+from app.exceptions import AIMBlockedException
 
 
 REPORT_SYSTEM = """You are a healthcare report generator.
@@ -40,7 +41,10 @@ class ReportService:
         if input_scan["blocked"]:
             return {"blocked": True, "security_scan": input_scan}
 
-        content = await ollama_service.generate(prompt, system=REPORT_SYSTEM)
+        try:
+            content = await ollama_service.generate(prompt, system=REPORT_SYSTEM)
+        except AIMBlockedException as e:
+            return {"blocked": True, "blocked_by": "AIM", "blocked_reason": e.reason}
 
         output_scan = await dual_security_scan(
             content=content, scan_type="output", feature_name="report_generation"

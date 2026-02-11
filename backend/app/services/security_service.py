@@ -78,24 +78,41 @@ class HiddenLayerClient:
                     }
                 
                 data = response.json()
-                blocked = data.get("verdict", False)
-                
+                has_detection = data.get("verdict", False)
+
                 reason = None
-                if blocked:
+                verdict = "pass"
+
+                if has_detection:
                     categories = data.get("categories", {})
+                    policy = data.get("policy", {})
+
+                    # Map detected categories to their block_* policy flags
+                    category_block_map = {
+                        "prompt_injection": "block_prompt_injection",
+                        "unsafe_input": "block_unsafe_input",
+                        "unsafe_output": "block_unsafe_output",
+                        "input_pii": "block_input_pii",
+                        "output_pii": "block_output_pii",
+                        "input_code": "block_input_code_detection",
+                        "output_code": "block_output_code_detection",
+                        "input_dos": "block_input_dos_detection",
+                        "guardrail": "block_guardrail_detection",
+                    }
+
                     detected = []
-                    if categories.get("prompt_injection"):
-                        detected.append("prompt injection")
-                    if categories.get("unsafe_input"):
-                        detected.append("unsafe input")
-                    if categories.get("input_pii"):
-                        detected.append("PII")
-                    if categories.get("output_pii"):
-                        detected.append("output PII")
+                    should_block = False
+                    for cat_key, block_key in category_block_map.items():
+                        if categories.get(cat_key):
+                            detected.append(cat_key.replace("_", " "))
+                            if policy.get(block_key) or policy.get("block_unsafe"):
+                                should_block = True
+
                     reason = ", ".join(detected) if detected else "security violation"
-                
+                    verdict = "block" if should_block else "detected"
+
                 return {
-                    "verdict": "block" if blocked else "pass",
+                    "verdict": verdict,
                     "reason": reason,
                     "scan_time_ms": elapsed,
                     "details": data,

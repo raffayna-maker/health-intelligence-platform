@@ -1,3 +1,4 @@
+import json
 import os
 import aiofiles
 from fastapi import UploadFile
@@ -7,6 +8,7 @@ from app.config import get_settings
 from app.models.document import Document
 from app.services.ollama_service import ollama_service
 from app.services.security_service import dual_security_scan
+from app.exceptions import AIMBlockedException
 
 settings = get_settings()
 
@@ -67,37 +69,48 @@ class DocumentService:
         input_scan = await dual_security_scan(
             content=text,
             scan_type="input",
-            feature="document_extraction",
-            db=db,
+            feature_name="document_extraction",
         )
-        if input_scan.blocked:
+        if input_scan["blocked"]:
+            blocked_by = input_scan["blocked_by"][0] if input_scan["blocked_by"] else "Security"
+            hl_reason = input_scan["hidden_layer_result"].get("reason")
+            aim_reason = input_scan["aim_result"].get("reason")
             return {
                 "document_id": doc_id,
                 "blocked": True,
-                "blocked_by": "Hidden Layer" if input_scan.hl_verdict == "block" else "AIM",
-                "blocked_reason": input_scan.hl_reason or input_scan.aim_reason,
-                "security_scan": input_scan.model_dump(),
+                "blocked_by": blocked_by,
+                "blocked_reason": hl_reason or aim_reason,
+                "security_scan": input_scan,
             }
 
         # AI extraction
         prompt = f"Extract structured data from this medical document:\n\n{text}"
-        extracted = await ollama_service.generate_structured(prompt, system=EXTRACTION_SYSTEM)
-
-        # Scan output
-        import json
-        output_scan = await dual_security_scan(
-            content=json.dumps(extracted),
-            scan_type="output",
-            feature="document_extraction",
-            db=db,
-        )
-        if output_scan.blocked:
+        try:
+            extracted = await ollama_service.generate_structured(prompt, system=EXTRACTION_SYSTEM)
+        except AIMBlockedException as e:
             return {
                 "document_id": doc_id,
                 "blocked": True,
-                "blocked_by": "Hidden Layer" if output_scan.hl_verdict == "block" else "AIM",
-                "blocked_reason": output_scan.hl_reason or output_scan.aim_reason,
-                "security_scan": output_scan.model_dump(),
+                "blocked_by": "AIM",
+                "blocked_reason": e.reason,
+            }
+
+        # Scan output
+        output_scan = await dual_security_scan(
+            content=json.dumps(extracted),
+            scan_type="output",
+            feature_name="document_extraction",
+        )
+        if output_scan["blocked"]:
+            blocked_by = output_scan["blocked_by"][0] if output_scan["blocked_by"] else "Security"
+            hl_reason = output_scan["hidden_layer_result"].get("reason")
+            aim_reason = output_scan["aim_result"].get("reason")
+            return {
+                "document_id": doc_id,
+                "blocked": True,
+                "blocked_by": blocked_by,
+                "blocked_reason": hl_reason or aim_reason,
+                "security_scan": output_scan,
             }
 
         doc.extracted_data = extracted
@@ -107,7 +120,7 @@ class DocumentService:
             "document_id": doc_id,
             "extracted_data": extracted,
             "blocked": False,
-            "security_scan": output_scan.model_dump(),
+            "security_scan": output_scan,
         }
 
     async def classify(self, doc_id: int, db: AsyncSession) -> dict:
@@ -121,18 +134,25 @@ class DocumentService:
         input_scan = await dual_security_scan(
             content=text,
             scan_type="input",
-            feature="document_classification",
-            db=db,
+            feature_name="document_classification",
         )
-        if input_scan.blocked:
+        if input_scan["blocked"]:
             return {
                 "document_id": doc_id,
                 "blocked": True,
-                "security_scan": input_scan.model_dump(),
+                "security_scan": input_scan,
             }
 
         prompt = f"Classify this medical document:\n\n{text[:2000]}"
-        classification = await ollama_service.generate_structured(prompt, system=CLASSIFICATION_SYSTEM)
+        try:
+            classification = await ollama_service.generate_structured(prompt, system=CLASSIFICATION_SYSTEM)
+        except AIMBlockedException as e:
+            return {
+                "document_id": doc_id,
+                "blocked": True,
+                "blocked_by": "AIM",
+                "blocked_reason": e.reason,
+            }
 
         doc.classification = classification.get("classification", "other")
         await db.flush()
@@ -142,7 +162,7 @@ class DocumentService:
             "classification": doc.classification,
             "confidence": classification.get("confidence", 0.5),
             "blocked": False,
-            "security_scan": input_scan.model_dump(),
+            "security_scan": input_scan,
         }
 
     async def _read_file(self, file_path: str) -> str:

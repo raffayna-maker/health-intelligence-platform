@@ -1,5 +1,6 @@
 """
-LLM Service — backed by AWS Bedrock (Claude Sonnet 4.5 + Titan Embeddings).
+LLM Service — text generation via LiteLLM proxy (AIM guardrails enforced
+inline), embeddings via AWS Bedrock Titan.
 
 Keeps the same interface (generate, generate_structured, embed, embed_batch,
 is_available) so all existing imports continue to work unchanged.
@@ -10,7 +11,9 @@ every import across the codebase.
 import asyncio
 import json
 import boto3
+import httpx
 from app.config import get_settings
+from app.exceptions import AIMBlockedException
 
 settings = get_settings()
 
@@ -20,10 +23,13 @@ class LLMService:
         self.model_id = settings.aws_bedrock_model_id
         self.embed_model_id = settings.aws_bedrock_embed_model_id
         self.region = settings.aws_region
-        self._client = None
+        self.litellm_url = settings.litellm_base_url or "http://litellm:4000"
+        self.litellm_key = settings.litellm_virtual_key
+        self._client = None  # boto3 client for embeddings + health check
 
     @property
     def client(self):
+        """boto3 bedrock-runtime client (used for embeddings only)."""
         if self._client is None:
             self._client = boto3.client(
                 "bedrock-runtime",
@@ -34,17 +40,45 @@ class LLMService:
         return self._client
 
     async def generate(self, prompt: str, system: str = "", temperature: float = 0.7) -> str:
-        system_blocks = [{"text": system}] if system else []
-        messages = [{"role": "user", "content": [{"text": prompt}]}]
+        """Generate text via LiteLLM proxy. AIM guardrails apply automatically."""
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
 
-        response = await asyncio.to_thread(
-            self.client.converse,
-            modelId=self.model_id,
-            messages=messages,
-            system=system_blocks,
-            inferenceConfig={"temperature": temperature, "maxTokens": 4096},
-        )
-        return response["output"]["message"]["content"][0]["text"]
+        payload = {
+            "model": "bedrock-sonnet",
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": 4096,
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self.litellm_key}",
+            "Content-Type": "application/json",
+        }
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                f"{self.litellm_url}/v1/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+
+            if response.status_code == 400:
+                error_msg = "Blocked by AIM"
+                error_data = {}
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("error", {}).get("message", error_msg)
+                except Exception:
+                    pass
+                raise AIMBlockedException(reason=error_msg, details=error_data)
+
+            response.raise_for_status()
+
+            data = response.json()
+            return data["choices"][0]["message"]["content"]
 
     async def generate_structured(self, prompt: str, system: str = "") -> dict:
         raw = await self.generate(prompt, system, temperature=0.3)

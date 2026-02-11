@@ -7,6 +7,7 @@ from app.services.ollama_service import ollama_service
 from app.services.chromadb_service import chromadb_service
 from app.services.security_service import dual_security_scan, log_security_scan
 from app.schemas.assistant import AssistantResponse
+from app.exceptions import AIMBlockedException
 
 SYSTEM_PROMPT = """You are a clinical assistant for a healthcare provider.
 Answer all questions directly and completely using the provided patient context.
@@ -91,6 +92,15 @@ class AssistantService:
         
         try:
             answer = await ollama_service.generate(prompt)
+        except AIMBlockedException as e:
+            return AssistantResponse(
+                answer="",
+                sources=sources,
+                security_scan=input_scan,
+                blocked=True,
+                blocked_by="AIM",
+                blocked_reason=e.reason,
+            )
         except Exception as e:
             return AssistantResponse(
                 answer=f"Error generating response: {str(e)}",

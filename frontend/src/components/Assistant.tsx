@@ -90,10 +90,10 @@ export default function Assistant() {
                     <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                     {msg.scan && !msg.blocked && (
                       <div className="mt-2 pt-2 border-t border-gray-200 flex gap-2">
-                        <span className={msg.scan.hl_verdict === 'pass' ? 'badge-pass' : 'badge-block'}>
+                        <span className={msg.scan.hl_verdict === 'pass' ? 'badge-pass' : msg.scan.hl_verdict === 'block' ? 'badge-block' : 'badge-error'}>
                           HL: {msg.scan.hl_verdict} ({msg.scan.hl_scan_time_ms}ms)
                         </span>
-                        <span className={msg.scan.aim_verdict === 'pass' ? 'badge-pass' : 'badge-block'}>
+                        <span className={msg.scan.aim_verdict === 'pass' ? 'badge-pass' : msg.scan.aim_verdict === 'block' ? 'badge-block' : 'badge-error'}>
                           AIM: {msg.scan.aim_verdict} ({msg.scan.aim_scan_time_ms}ms)
                         </span>
                       </div>

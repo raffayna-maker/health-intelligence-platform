@@ -87,10 +87,10 @@ export default function Dashboard() {
                   <div>
                     <span className="font-medium text-sm">{event.feature}</span>
                     <div className="flex gap-2 mt-1">
-                      <span className={event.hl_verdict === 'pass' ? 'badge-pass' : 'badge-block'}>
+                      <span className={event.hl_verdict === 'pass' ? 'badge-pass' : event.hl_verdict === 'block' ? 'badge-block' : 'badge-error'}>
                         HL: {event.hl_verdict}
                       </span>
-                      <span className={event.aim_verdict === 'pass' ? 'badge-pass' : 'badge-block'}>
+                      <span className={event.aim_verdict === 'pass' ? 'badge-pass' : event.aim_verdict === 'block' ? 'badge-block' : 'badge-error'}>
                         AIM: {event.aim_verdict}
                       </span>
                     </div>

@@ -98,10 +98,10 @@ export default function Reports() {
         {/* Security scan result */}
         {generatedResult?.security_scan && (
           <div className="mt-3 flex gap-2">
-            <span className={generatedResult.security_scan.hl_verdict === 'pass' ? 'badge-pass' : 'badge-block'}>
+            <span className={generatedResult.security_scan.hl_verdict === 'pass' ? 'badge-pass' : generatedResult.security_scan.hl_verdict === 'block' ? 'badge-block' : 'badge-error'}>
               HL: {generatedResult.security_scan.hl_verdict}
             </span>
-            <span className={generatedResult.security_scan.aim_verdict === 'pass' ? 'badge-pass' : 'badge-block'}>
+            <span className={generatedResult.security_scan.aim_verdict === 'pass' ? 'badge-pass' : generatedResult.security_scan.aim_verdict === 'block' ? 'badge-block' : 'badge-error'}>
               AIM: {generatedResult.security_scan.aim_verdict}
             </span>
           </div>
