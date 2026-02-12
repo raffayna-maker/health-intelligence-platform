@@ -5,6 +5,8 @@ export interface Patient {
   date_of_birth: string
   gender: string
   ssn?: string
+  phone?: string
+  email?: string
   address?: string
   conditions: string[]
   medications: string[]

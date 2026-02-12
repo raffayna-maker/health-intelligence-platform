@@ -8,6 +8,8 @@ class PatientBase(BaseModel):
     date_of_birth: date
     gender: str
     ssn: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
     address: Optional[str] = None
     conditions: list[str] = []
     medications: list[str] = []
@@ -28,6 +30,8 @@ class PatientUpdate(BaseModel):
     date_of_birth: Optional[date] = None
     gender: Optional[str] = None
     ssn: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
     address: Optional[str] = None
     conditions: Optional[list[str]] = None
     medications: Optional[list[str]] = None

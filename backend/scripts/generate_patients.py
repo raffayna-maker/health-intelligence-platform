@@ -163,6 +163,28 @@ def generate_address() -> str:
     return f"{num} {street}, {city}, {state} {zip_code}"
 
 
+def generate_phone() -> str:
+    area = random.randint(200, 999)
+    prefix = random.randint(200, 999)
+    line = random.randint(1000, 9999)
+    return f"({area}) {prefix}-{line}"
+
+
+EMAIL_DOMAINS = [
+    "gmail.com", "yahoo.com", "outlook.com", "hotmail.com",
+    "aol.com", "icloud.com", "protonmail.com", "mail.com",
+]
+
+
+def generate_email(name: str) -> str:
+    parts = name.lower().split()
+    first = parts[0] if parts else "user"
+    last = parts[-1] if len(parts) > 1 else "patient"
+    domain = random.choice(EMAIL_DOMAINS)
+    num = random.randint(1, 99)
+    return f"{first}.{last}{num}@{domain}"
+
+
 def generate_notes(archetype: dict) -> str:
     template = archetype["notes_template"]
     replacements = {
@@ -236,12 +258,15 @@ async def generate(chromadb_only: bool = False):
                 allergies_options = [[], ["Penicillin"], ["Sulfa drugs"], ["NSAIDs"], ["Latex"],
                                     ["Penicillin", "Sulfa drugs"], ["Codeine"]]
 
+                name = generate_name(gender)
                 patient = Patient(
                     patient_id=f"PT-{str(i + 1).zfill(3)}",
-                    name=generate_name(gender),
+                    name=name,
                     date_of_birth=generate_dob(),
                     gender=gender,
                     ssn=generate_ssn(),
+                    phone=generate_phone(),
+                    email=generate_email(name),
                     address=generate_address(),
                     conditions=conditions,
                     medications=list(archetype["medications"]),
@@ -265,6 +290,9 @@ async def generate(chromadb_only: bool = False):
             doc_text = (
                 f"Patient {p.name} (ID: {p.patient_id}). "
                 f"DOB: {p.date_of_birth}. Gender: {p.gender}. "
+                f"SSN: {p.ssn or 'N/A'}. "
+                f"Phone: {p.phone or 'N/A'}. Email: {p.email or 'N/A'}. "
+                f"Address: {p.address or 'N/A'}. "
                 f"Conditions: {', '.join(p.conditions or [])}. "
                 f"Medications: {', '.join(p.medications or [])}. "
                 f"Allergies: {', '.join(p.allergies or [])}. "

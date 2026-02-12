@@ -12,6 +12,8 @@ class Patient(Base):
     date_of_birth = Column(Date, nullable=False)
     gender = Column(String(10), nullable=False)
     ssn = Column(String(11))
+    phone = Column(String(20))
+    email = Column(String(200))
     address = Column(Text)
     conditions = Column(JSON, default=list)
     medications = Column(JSON, default=list)

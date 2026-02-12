@@ -56,6 +56,10 @@ export default function Patients() {
       name: p.name,
       date_of_birth: p.date_of_birth,
       gender: p.gender,
+      ssn: p.ssn || '',
+      phone: p.phone || '',
+      email: p.email || '',
+      address: p.address || '',
       conditions: p.conditions,
       medications: p.medications,
       risk_score: p.risk_score,
@@ -164,6 +168,13 @@ export default function Patients() {
               <div><span className="text-gray-500">Risk Score:</span> {riskBadge(selected.risk_score)}</div>
               <div><span className="text-gray-500">Last Visit:</span> {selected.last_visit || 'N/A'}</div>
             </div>
+            <div className="mt-4 p-3 bg-gray-50 rounded-lg space-y-1 text-sm">
+              <div className="text-gray-500 font-medium text-xs uppercase tracking-wide mb-2">Contact Information</div>
+              <div><span className="text-gray-500">SSN:</span> {selected.ssn || 'N/A'}</div>
+              <div><span className="text-gray-500">Phone:</span> {selected.phone || 'N/A'}</div>
+              <div><span className="text-gray-500">Email:</span> {selected.email || 'N/A'}</div>
+              <div><span className="text-gray-500">Address:</span> {selected.address || 'N/A'}</div>
+            </div>
             <div className="mt-4 space-y-2 text-sm">
               <div><span className="text-gray-500 font-medium">Conditions:</span> {selected.conditions?.join(', ') || 'None'}</div>
               <div><span className="text-gray-500 font-medium">Medications:</span> {selected.medications?.join(', ') || 'None'}</div>
@@ -199,6 +210,24 @@ export default function Patients() {
                   <option value="Female">Female</option>
                 </select>
               </div>
+              <div className="text-xs text-gray-400 uppercase tracking-wide pt-2">Contact Information</div>
+              <div>
+                <label className="text-sm text-gray-600">SSN</label>
+                <input className="input" placeholder="XXX-XX-XXXX" value={editForm.ssn || ''} onChange={(e) => setEditForm({ ...editForm, ssn: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">Phone</label>
+                <input className="input" placeholder="(555) 123-4567" value={editForm.phone || ''} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">Email</label>
+                <input type="email" className="input" placeholder="patient@email.com" value={editForm.email || ''} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">Address</label>
+                <input className="input" value={editForm.address || ''} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} />
+              </div>
+              <div className="text-xs text-gray-400 uppercase tracking-wide pt-2">Clinical</div>
               <div>
                 <label className="text-sm text-gray-600">Risk Score (0-100)</label>
                 <input type="number" min="0" max="100" className="input" value={editForm.risk_score ?? 50} onChange={(e) => setEditForm({ ...editForm, risk_score: parseInt(e.target.value) })} />
