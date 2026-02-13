@@ -208,6 +208,7 @@ export default function Security() {
                     hlScanTimeMs={log.hl_scan_time_ms}
                     aimVerdict={log.aim_verdict}
                     aimScanTimeMs={log.aim_scan_time_ms}
+                    showOnPass
                   />
                 </td>
                 <td className="px-4 py-3">
