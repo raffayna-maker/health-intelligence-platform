@@ -1,14 +1,42 @@
 import asyncio
 import time
 import httpx
-from typing import Optional, Dict, Any
+from abc import ABC, abstractmethod
+from typing import Optional, Dict, Any, List
 from app.config import get_settings
 
 settings = get_settings()
 
 
-class HiddenLayerClient:
+class SecurityTool(ABC):
+    """Base class for all security scanning tools."""
+
+    @property
+    @abstractmethod
+    def tool_name(self) -> str:
+        """Short identifier for results dicts and DB, e.g. 'hidden_layer'."""
+        ...
+
+    @property
+    @abstractmethod
+    def display_name(self) -> str:
+        """Human-readable name for UI badges, e.g. 'Hidden Layer'."""
+        ...
+
+    @abstractmethod
+    async def scan(self, content: str, scan_type: str = "input", prompt: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Scan content and return result dict.
+        verdict: "pass", "block", "detected", "error", or "skip"
+        """
+        ...
+
+
+class HiddenLayerClient(SecurityTool):
     """Client for Hidden Layer AIDR Prompt Analyzer (SaaS)."""
+
+    tool_name = "hidden_layer"
+    display_name = "Hidden Layer"
 
     def __init__(self):
         self.client_id = settings.hiddenlayer_client_id
@@ -22,7 +50,7 @@ class HiddenLayerClient:
             return self._token
 
         auth_url = "https://auth.hiddenlayer.ai/oauth2/token?grant_type=client_credentials"
-        
+
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
                 auth_url,
@@ -47,7 +75,6 @@ class HiddenLayerClient:
             if scan_type == "input":
                 payload["prompt"] = content
             else:
-                # Output scan requires both prompt and output
                 if not prompt:
                     elapsed = int((time.time() - start) * 1000)
                     return {
@@ -58,17 +85,17 @@ class HiddenLayerClient:
                     }
                 payload["prompt"] = prompt
                 payload["output"] = content
-            
+
             headers = {
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
                 "X-Requester-Id": "healthcare-platform",
             }
-            
+
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(api_url, headers=headers, json=payload)
                 elapsed = int((time.time() - start) * 1000)
-                
+
                 if response.status_code != 200:
                     return {
                         "verdict": "error",
@@ -76,7 +103,7 @@ class HiddenLayerClient:
                         "scan_time_ms": elapsed,
                         "details": {},
                     }
-                
+
                 data = response.json()
                 has_detection = data.get("verdict", False)
 
@@ -87,7 +114,6 @@ class HiddenLayerClient:
                     categories = data.get("categories", {})
                     policy = data.get("policy", {})
 
-                    # Map detected categories to their block_* policy flags
                     category_block_map = {
                         "prompt_injection": "block_prompt_injection",
                         "unsafe_input": "block_unsafe_input",
@@ -127,122 +153,144 @@ class HiddenLayerClient:
             }
 
 
-class AIMClient:
-    """Client for AIM Security via LiteLLM Proxy with proper virtual key."""
+class PromptFooClient(SecurityTool):
+    """Client for PromptFoo Adaptive Guardrails API. INPUT scanning only."""
+
+    tool_name = "promptfoo"
+    display_name = "PromptFoo"
 
     def __init__(self):
-        self.litellm_url = settings.litellm_base_url or "http://litellm:4000"
-        self.litellm_key = settings.litellm_virtual_key
+        self.api_key = settings.promptfoo_api_key
+        self.target_id = settings.promptfoo_target_id
+        self.base_url = settings.promptfoo_api_url
 
     async def scan(self, content: str, scan_type: str = "input", prompt: Optional[str] = None) -> Dict[str, Any]:
-        """Scan content with AIM via LiteLLM proxy using generated virtual key."""
+        """Scan content with PromptFoo Guardrails. Input only — output scans are skipped."""
         start = time.time()
 
-        # Check if virtual key is configured
-        if not self.litellm_key or self.litellm_key.strip() == "":
+        # PromptFoo only handles input scanning
+        if scan_type != "input":
+            elapsed = int((time.time() - start) * 1000)
+            return {
+                "verdict": "skip",
+                "reason": "PromptFoo only scans input",
+                "scan_time_ms": elapsed,
+                "details": {},
+            }
+
+        if not self.api_key or not self.target_id:
             elapsed = int((time.time() - start) * 1000)
             return {
                 "verdict": "error",
-                "reason": "LITELLM_VIRTUAL_KEY not configured",
+                "reason": "PromptFoo not configured (missing API key or target ID)",
                 "scan_time_ms": elapsed,
                 "details": {},
             }
 
         try:
-            payload = {
-                "model": "bedrock-sonnet",
-                "messages": [{"role": "user", "content": content}],
-                "max_tokens": 1,
-                "stream": False,
-            }
-
+            url = f"{self.base_url}/api/v1/guardrails/{self.target_id}/analyze"
             headers = {
-                "Authorization": f"Bearer {self.litellm_key}",
+                "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             }
+            payload = {"prompt": content}
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.litellm_url}/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                )
-                
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(url, headers=headers, json=payload)
                 elapsed = int((time.time() - start) * 1000)
-                
-                if response.status_code == 400:
-                    try:
-                        error_data = response.json()
-                        error_message = error_data.get("error", {}).get("message", "")
-                        return {
-                            "verdict": "block",
-                            "reason": error_message,
-                            "scan_time_ms": elapsed,
-                            "details": error_data,
-                        }
-                    except:
-                        return {
-                            "verdict": "block",
-                            "reason": "Content blocked by AIM",
-                            "scan_time_ms": elapsed,
-                            "details": {},
-                        }
-                elif response.status_code == 200:
-                    return {
-                        "verdict": "pass",
-                        "reason": None,
-                        "scan_time_ms": elapsed,
-                        "details": {},
-                    }
-                else:
+
+                if response.status_code != 200:
                     return {
                         "verdict": "error",
-                        "reason": f"AIM API error: {response.status_code}",
+                        "reason": f"PromptFoo API error: {response.status_code}",
                         "scan_time_ms": elapsed,
                         "details": {},
                     }
+
+                data = response.json()
+                allowed = data.get("allowed", True)
+                reason = data.get("reason") or data.get("message")
+
+                return {
+                    "verdict": "pass" if allowed else "block",
+                    "reason": reason if not allowed else None,
+                    "scan_time_ms": elapsed,
+                    "details": data,
+                }
         except Exception as e:
             elapsed = int((time.time() - start) * 1000)
             return {
                 "verdict": "error",
-                "reason": f"AIM error: {str(e)}",
+                "reason": f"PromptFoo error: {str(e)}",
                 "scan_time_ms": elapsed,
                 "details": {},
             }
 
 
-async def dual_security_scan(
+def get_active_tools() -> List[SecurityTool]:
+    """Return list of enabled security tools based on config."""
+    tools: List[SecurityTool] = []
+
+    if settings.hiddenlayer_client_id and settings.hiddenlayer_client_secret:
+        tools.append(HiddenLayerClient())
+
+    if settings.promptfoo_api_key and settings.promptfoo_target_id:
+        tools.append(PromptFooClient())
+
+    return tools
+
+
+def get_block_reason(scan_result: Dict[str, Any]) -> str:
+    """Extract the first block reason from any tool in the scan result."""
+    for result in scan_result.get("tool_results", {}).values():
+        if result.get("verdict") == "block" and result.get("reason"):
+            return result["reason"]
+    for result in scan_result.get("tool_results", {}).values():
+        if result.get("reason"):
+            return result["reason"]
+    return "Security violation"
+
+
+async def security_scan(
     content: str,
     scan_type: str = "input",
     feature_name: str = "unknown",
     prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Perform dual security scan with both Hidden Layer and AIM."""
-    hl_client = HiddenLayerClient()
-    aim_client = AIMClient()
+    """Perform security scan with all active tools in parallel."""
+    tools = get_active_tools()
 
-    hl_task = asyncio.create_task(hl_client.scan(content, scan_type, prompt))
-    aim_task = asyncio.create_task(aim_client.scan(content, scan_type, prompt))
-    
-    hl_result, aim_result = await asyncio.gather(hl_task, aim_task)
-    
-    hl_blocked = hl_result.get("verdict") == "block"
-    aim_blocked = aim_result.get("verdict") == "block"
-    
+    if not tools:
+        return {
+            "blocked": False,
+            "blocked_by": [],
+            "tool_results": {},
+            "scan_type": scan_type,
+            "feature_name": feature_name,
+        }
+
+    tasks = [asyncio.create_task(tool.scan(content, scan_type, prompt)) for tool in tools]
+    results = await asyncio.gather(*tasks)
+
+    tool_results = {}
     blocked_by = []
-    if hl_blocked:
-        blocked_by.append("Hidden Layer")
-    if aim_blocked:
-        blocked_by.append("AIM")
-    
+
+    for tool, result in zip(tools, results):
+        tool_results[tool.tool_name] = result
+        if result.get("verdict") == "block":
+            blocked_by.append(tool.display_name)
+
     return {
         "blocked": bool(blocked_by),
         "blocked_by": blocked_by,
-        "hidden_layer_result": hl_result,
-        "aim_result": aim_result,
+        "tool_results": tool_results,
         "scan_type": scan_type,
         "feature_name": feature_name,
     }
+
+
+# Backward compatibility alias
+dual_security_scan = security_scan
 
 
 async def log_security_scan(
@@ -251,34 +299,28 @@ async def log_security_scan(
     content: str,
     agent_run_id: Optional[int] = None,
 ):
-    """
-    Log security scan results to database.
-    
-    Args:
-        db: Database session
-        scan_result: Result from dual_security_scan()
-        content: The content that was scanned
-        agent_run_id: Optional agent run ID
-    """
+    """Log security scan results to database."""
     from app.models.security_log import SecurityLog
-    
-    hl_result = scan_result.get("hidden_layer_result", {})
-    aim_result = scan_result.get("aim_result", {})
-    
+
+    tool_results = scan_result.get("tool_results", {})
+    hl = tool_results.get("hidden_layer", {})
+
     log = SecurityLog(
         feature=scan_result.get("feature_name", "unknown"),
         scan_type=scan_result.get("scan_type", "input"),
         content_preview=content[:200] if content else "",
-        hl_verdict=hl_result.get("verdict"),
-        hl_reason=hl_result.get("reason"),
-        hl_scan_time_ms=hl_result.get("scan_time_ms"),
-        aim_verdict=aim_result.get("verdict"),
-        aim_reason=aim_result.get("reason"),
-        aim_scan_time_ms=aim_result.get("scan_time_ms"),
+        tool_results=tool_results,
+        # Legacy columns populated from HL results for backward compat
+        hl_verdict=hl.get("verdict"),
+        hl_reason=hl.get("reason"),
+        hl_scan_time_ms=hl.get("scan_time_ms"),
+        aim_verdict=None,
+        aim_reason=None,
+        aim_scan_time_ms=None,
         final_verdict="block" if scan_result.get("blocked") else "pass",
         agent_run_id=agent_run_id,
     )
-    
+
     db.add(log)
     await db.commit()
     return log

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.services.ollama_service import ollama_service
 from app.services.chromadb_service import chromadb_service
-from app.services.security_service import dual_security_scan, log_security_scan
+from app.services.security_service import security_scan, get_block_reason, log_security_scan
 from app.schemas.assistant import AssistantResponse
 from app.exceptions import AIMBlockedException
 
@@ -58,7 +58,7 @@ class AssistantService:
                 print(f"RAG error: {e}")
             return ctx, srcs
 
-        input_scan_task = asyncio.create_task(dual_security_scan(
+        input_scan_task = asyncio.create_task(security_scan(
             content=question,
             scan_type="input",
             feature_name="clinical_assistant",
@@ -69,16 +69,12 @@ class AssistantService:
         await log_security_scan(db, input_scan, question)
 
         if input_scan["blocked"]:
-            blocked_by = input_scan["blocked_by"][0] if input_scan["blocked_by"] else "Security"
-            hl_reason = input_scan["hidden_layer_result"].get("reason")
-            aim_reason = input_scan["aim_result"].get("reason")
-            reason = hl_reason or aim_reason or "Security violation"
             return AssistantResponse(
                 answer="",
                 security_scan=input_scan,
                 blocked=True,
                 blocked_by=", ".join(input_scan["blocked_by"]),
-                blocked_reason=reason,
+                blocked_reason=get_block_reason(input_scan),
             )
 
         # Step 2: Get RAG results (already running in parallel)
@@ -110,7 +106,7 @@ class AssistantService:
             )
         
         # Step 4: Scan output with dual security
-        output_scan = await dual_security_scan(
+        output_scan = await security_scan(
             content=answer,
             scan_type="output",
             feature_name="clinical_assistant",
@@ -121,18 +117,13 @@ class AssistantService:
         await log_security_scan(db, output_scan, answer)
         
         if output_scan["blocked"]:
-            blocked_by = output_scan["blocked_by"][0] if output_scan["blocked_by"] else "Security"
-            hl_reason = output_scan["hidden_layer_result"].get("reason")
-            aim_reason = output_scan["aim_result"].get("reason")
-            reason = hl_reason or aim_reason or "Security violation"
-            
             return AssistantResponse(
                 answer="",
                 sources=sources,
                 security_scan=output_scan,
                 blocked=True,
                 blocked_by=", ".join(output_scan["blocked_by"]),
-                blocked_reason=reason,
+                blocked_reason=get_block_reason(output_scan),
             )
         
         return AssistantResponse(

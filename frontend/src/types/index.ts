@@ -38,24 +38,47 @@ export interface DocumentItem {
   uploaded_at?: string
 }
 
+export interface ToolResult {
+  verdict: string
+  reason?: string
+  scan_time_ms: number
+  details?: Record<string, unknown>
+}
+
+export interface ScanResult {
+  tool_results?: Record<string, ToolResult>
+  final_verdict: string
+  blocked: boolean
+}
+
 export interface SecurityLog {
   id: number
   timestamp: string
   feature: string
   scan_type: string
   content_preview?: string
-  hl_verdict: string
+  tool_results?: Record<string, ToolResult>
+  // Legacy fields (for old data)
+  hl_verdict?: string
   hl_reason?: string
-  hl_scan_time_ms: number
-  aim_verdict: string
+  hl_scan_time_ms?: number
+  aim_verdict?: string
   aim_reason?: string
-  aim_scan_time_ms: number
+  aim_scan_time_ms?: number
   final_verdict: string
   agent_run_id?: number
 }
 
+export interface ToolStats {
+  blocks: number
+  avg_scan_time_ms: number
+}
+
 export interface SecurityStats {
   total_scans: number
+  total_blocks: number
+  tool_stats?: Record<string, ToolStats>
+  // Legacy fields
   hl_blocks: number
   aim_blocks: number
   both_blocked: number
@@ -66,15 +89,19 @@ export interface SecurityStats {
   aim_only_blocks: number
 }
 
+// Backward compatibility — DualScanResult now wraps the dynamic structure
 export interface DualScanResult {
-  hl_verdict: string
+  tool_results?: Record<string, ToolResult>
+  // Legacy fields (for old scan data)
+  hl_verdict?: string
   hl_reason?: string
-  hl_scan_time_ms: number
-  aim_verdict: string
+  hl_scan_time_ms?: number
+  aim_verdict?: string
   aim_reason?: string
-  aim_scan_time_ms: number
+  aim_scan_time_ms?: number
   final_verdict: string
   blocked: boolean
+  blocked_by?: string[]
 }
 
 export interface AgentInfo {
@@ -126,8 +153,6 @@ export interface DashboardStats {
   security: {
     total_scans: number
     total_blocks: number
-    hl_blocks: number
-    aim_blocks: number
   }
   agents: {
     total_runs: number
@@ -144,8 +169,9 @@ export interface DashboardStats {
     id: number
     feature: string
     final_verdict: string
-    hl_verdict: string
-    aim_verdict: string
+    tool_results?: Record<string, ToolResult>
+    hl_verdict?: string
+    aim_verdict?: string
     timestamp?: string
   }>
 }

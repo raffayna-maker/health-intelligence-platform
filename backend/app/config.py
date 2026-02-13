@@ -45,7 +45,15 @@ class Settings(BaseSettings):
         default="https://api.aim.security",
         env="AIM_API_URL"
     )
-    
+
+    # PromptFoo Guardrails
+    promptfoo_api_key: str = Field(default="", env="PROMPTFOO_API_KEY")
+    promptfoo_target_id: str = Field(default="", env="PROMPTFOO_TARGET_ID")
+    promptfoo_api_url: str = Field(
+        default="https://api.promptfoo.app",
+        env="PROMPTFOO_API_URL"
+    )
+
     # File uploads
     upload_dir: str = Field(default="/app/uploads", env="UPLOAD_DIR")
 

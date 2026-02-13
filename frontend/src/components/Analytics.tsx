@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getRiskDistribution, getConditionPrevalence, calculateRisk, analyzeTrends, predictReadmission } from '../api/client'
+import SecurityBadges from './SecurityBadges'
 
 export default function Analytics() {
   const [riskDist, setRiskDist] = useState<any>(null)
@@ -61,9 +62,13 @@ export default function Analytics() {
   const SecurityIndicator = ({ scan }: { scan: any }) => {
     if (!scan) return null
     return (
-      <div className="flex gap-2 mt-2">
-        <span className={scan.hl_verdict === 'pass' ? 'badge-pass' : scan.hl_verdict === 'block' ? 'badge-block' : 'badge-error'}>HL: {scan.hl_verdict}</span>
-        <span className={scan.aim_verdict === 'pass' ? 'badge-pass' : scan.aim_verdict === 'block' ? 'badge-block' : 'badge-error'}>AIM: {scan.aim_verdict}</span>
+      <div className="mt-2">
+        <SecurityBadges
+          toolResults={scan.tool_results}
+          hlVerdict={scan.hl_verdict}
+          aimVerdict={scan.aim_verdict}
+          compact
+        />
       </div>
     )
   }
@@ -156,7 +161,7 @@ export default function Analytics() {
           {riskResult && (
             <div className="mt-3 p-3 bg-gray-50 rounded-lg text-sm">
               {riskResult.blocked ? (
-                <p className="text-red-600">Blocked: {riskResult.security_scan?.aim_reason || riskResult.security_scan?.hl_reason}</p>
+                <p className="text-red-600">Blocked by security scan</p>
               ) : (
                 <>
                   <p><strong>Risk Score:</strong> {riskResult.risk_score}</p>

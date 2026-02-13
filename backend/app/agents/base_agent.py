@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.ollama_service import ollama_service
-from app.services.security_service import dual_security_scan, log_security_scan
+from app.services.security_service import security_scan, log_security_scan
 from app.models.agent_run import AgentRun, AgentStep
 from app.agents.tools import TOOL_REGISTRY
 from app.exceptions import AIMBlockedException
@@ -217,7 +217,7 @@ OR {{"type":"final_answer","answer":"...","reasoning":"..."}}"""
             yield {"event": "reasoning", "data": {"iteration": iteration, "reasoning": raw_reasoning}}
 
             # --- SECURITY SCAN: Reasoning ---
-            reasoning_scan = await dual_security_scan(
+            reasoning_scan = await security_scan(
                 content=raw_reasoning,
                 scan_type="input",
                 feature_name=f"{self.agent_type}_agent",
@@ -313,7 +313,7 @@ OR {{"type":"final_answer","answer":"...","reasoning":"..."}}"""
                 self.tool_call_history.append(tool_signature)
 
                 # Security scan tool input
-                input_scan = await dual_security_scan(
+                input_scan = await security_scan(
                     content=json.dumps(tool_input),
                     scan_type="input",
                     feature_name=f"agent_tool_{tool_name}",
@@ -354,7 +354,7 @@ OR {{"type":"final_answer","answer":"...","reasoning":"..."}}"""
                 # external data (documents, web results) that will be fed back to
                 # the LLM. Scanning as "input" ensures HiddenLayer's prompt injection
                 # detector runs on the content (output scans require a prompt param).
-                output_scan = await dual_security_scan(
+                output_scan = await security_scan(
                     content=json.dumps(tool_result, default=str),
                     scan_type="input",
                     feature_name=f"agent_tool_{tool_name}",

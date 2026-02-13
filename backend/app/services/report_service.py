@@ -7,7 +7,7 @@ from app.models.security_log import SecurityLog
 from app.models.agent_run import AgentRun
 from app.models.report import Report
 from app.services.ollama_service import ollama_service
-from app.services.security_service import dual_security_scan
+from app.services.security_service import security_scan
 from app.exceptions import AIMBlockedException
 
 
@@ -31,7 +31,7 @@ class ReportService:
 
         prompt = f"Generate a {report_type} report for the healthcare platform.\n\nData:\n{data_summary}"
 
-        input_scan = await dual_security_scan(
+        input_scan = await security_scan(
             content=prompt, scan_type="input", feature_name="report_generation"
         )
         
@@ -46,7 +46,7 @@ class ReportService:
         except AIMBlockedException as e:
             return {"blocked": True, "blocked_by": "AIM", "blocked_reason": e.reason}
 
-        output_scan = await dual_security_scan(
+        output_scan = await security_scan(
             content=content, scan_type="output", feature_name="report_generation"
         )
         

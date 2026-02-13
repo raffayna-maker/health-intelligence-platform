@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { queryAssistant, getAssistantHistory } from '../api/client'
 import { AssistantResponse } from '../types'
+import SecurityBadges from './SecurityBadges'
 
 export default function Assistant() {
   const [question, setQuestion] = useState('')
@@ -89,13 +90,14 @@ export default function Assistant() {
                     )}
                     <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                     {msg.scan && !msg.blocked && (
-                      <div className="mt-2 pt-2 border-t border-gray-200 flex gap-2">
-                        <span className={msg.scan.hl_verdict === 'pass' ? 'badge-pass' : msg.scan.hl_verdict === 'block' ? 'badge-block' : 'badge-error'}>
-                          HL: {msg.scan.hl_verdict} ({msg.scan.hl_scan_time_ms}ms)
-                        </span>
-                        <span className={msg.scan.aim_verdict === 'pass' ? 'badge-pass' : msg.scan.aim_verdict === 'block' ? 'badge-block' : 'badge-error'}>
-                          AIM: {msg.scan.aim_verdict} ({msg.scan.aim_scan_time_ms}ms)
-                        </span>
+                      <div className="mt-2 pt-2 border-t border-gray-200">
+                        <SecurityBadges
+                          toolResults={msg.scan.tool_results}
+                          hlVerdict={msg.scan.hl_verdict}
+                          hlScanTimeMs={msg.scan.hl_scan_time_ms}
+                          aimVerdict={msg.scan.aim_verdict}
+                          aimScanTimeMs={msg.scan.aim_scan_time_ms}
+                        />
                       </div>
                     )}
                   </div>
@@ -106,7 +108,7 @@ export default function Assistant() {
               <div className="flex justify-start">
                 <div className="bg-gray-100 rounded-xl px-4 py-3">
                   <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <span className="animate-pulse">Scanning with HL + AIM...</span>
+                    <span className="animate-pulse">Security scanning...</span>
                   </div>
                 </div>
               </div>

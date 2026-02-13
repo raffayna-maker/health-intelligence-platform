@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getDashboardStats } from '../api/client'
 import { DashboardStats } from '../types'
+import SecurityBadges from './SecurityBadges'
 
 export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
@@ -32,9 +33,6 @@ export default function Dashboard() {
         <div className="card">
           <div className="text-sm text-gray-500 mb-1">Threats Blocked</div>
           <div className="text-3xl font-bold text-red-600">{stats?.security.total_blocks || 0}</div>
-          <div className="text-xs text-gray-400 mt-1">
-            HL: {stats?.security.hl_blocks || 0} | AIM: {stats?.security.aim_blocks || 0}
-          </div>
         </div>
         <div className="card">
           <div className="text-sm text-gray-500 mb-1">Agent Runs</div>
@@ -86,13 +84,13 @@ export default function Dashboard() {
                 <div key={event.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                   <div>
                     <span className="font-medium text-sm">{event.feature}</span>
-                    <div className="flex gap-2 mt-1">
-                      <span className={event.hl_verdict === 'pass' ? 'badge-pass' : event.hl_verdict === 'block' ? 'badge-block' : 'badge-error'}>
-                        HL: {event.hl_verdict}
-                      </span>
-                      <span className={event.aim_verdict === 'pass' ? 'badge-pass' : event.aim_verdict === 'block' ? 'badge-block' : 'badge-error'}>
-                        AIM: {event.aim_verdict}
-                      </span>
+                    <div className="mt-1">
+                      <SecurityBadges
+                        toolResults={event.tool_results}
+                        hlVerdict={event.hl_verdict}
+                        aimVerdict={event.aim_verdict}
+                        compact
+                      />
                     </div>
                   </div>
                   <span className={event.final_verdict === 'pass' ? 'badge-pass' : 'badge-block'}>

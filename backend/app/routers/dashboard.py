@@ -16,12 +16,6 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     total_blocks = await db.scalar(
         select(func.count(SecurityLog.id)).where(SecurityLog.final_verdict == "block")
     ) or 0
-    hl_blocks = await db.scalar(
-        select(func.count(SecurityLog.id)).where(SecurityLog.hl_verdict == "block")
-    ) or 0
-    aim_blocks = await db.scalar(
-        select(func.count(SecurityLog.id)).where(SecurityLog.aim_verdict == "block")
-    ) or 0
     agent_runs = await db.scalar(select(func.count(AgentRun.id))) or 0
     successful_runs = await db.scalar(
         select(func.count(AgentRun.id)).where(AgentRun.status == "completed")
@@ -44,8 +38,6 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         "security": {
             "total_scans": total_scans,
             "total_blocks": total_blocks,
-            "hl_blocks": hl_blocks,
-            "aim_blocks": aim_blocks,
         },
         "agents": {
             "total_runs": agent_runs,
@@ -66,6 +58,8 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
                 "id": s.id,
                 "feature": s.feature,
                 "final_verdict": s.final_verdict,
+                "tool_results": s.tool_results,
+                # Legacy fields for old data
                 "hl_verdict": s.hl_verdict,
                 "aim_verdict": s.aim_verdict,
                 "timestamp": s.timestamp.isoformat() if s.timestamp else None,

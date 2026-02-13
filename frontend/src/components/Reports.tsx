@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { generateReport, getReports, getReport, deleteReport } from '../api/client'
 import { ReportItem } from '../types'
+import SecurityBadges from './SecurityBadges'
 
 export default function Reports() {
   const [reports, setReports] = useState<ReportItem[]>([])
@@ -97,13 +98,13 @@ export default function Reports() {
 
         {/* Security scan result */}
         {generatedResult?.security_scan && (
-          <div className="mt-3 flex gap-2">
-            <span className={generatedResult.security_scan.hl_verdict === 'pass' ? 'badge-pass' : generatedResult.security_scan.hl_verdict === 'block' ? 'badge-block' : 'badge-error'}>
-              HL: {generatedResult.security_scan.hl_verdict}
-            </span>
-            <span className={generatedResult.security_scan.aim_verdict === 'pass' ? 'badge-pass' : generatedResult.security_scan.aim_verdict === 'block' ? 'badge-block' : 'badge-error'}>
-              AIM: {generatedResult.security_scan.aim_verdict}
-            </span>
+          <div className="mt-3">
+            <SecurityBadges
+              toolResults={generatedResult.security_scan.tool_results}
+              hlVerdict={generatedResult.security_scan.hl_verdict}
+              aimVerdict={generatedResult.security_scan.aim_verdict}
+              compact
+            />
           </div>
         )}
 

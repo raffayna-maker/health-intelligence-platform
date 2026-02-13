@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getDocuments, uploadDocument, extractDocument, classifyDocument, deleteDocument } from '../api/client'
-import { DocumentItem, DualScanResult } from '../types'
+import { DocumentItem } from '../types'
+import SecurityBadges from './SecurityBadges'
 
 export default function Documents() {
   const [documents, setDocuments] = useState<DocumentItem[]>([])
@@ -74,17 +75,6 @@ export default function Documents() {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
-
-  const SecurityBadge = ({ scan }: { scan: DualScanResult }) => (
-    <div className="flex gap-2 text-xs">
-      <span className={scan.hl_verdict === 'pass' ? 'badge-pass' : scan.hl_verdict === 'block' ? 'badge-block' : 'badge-error'}>
-        HL: {scan.hl_verdict} ({scan.hl_scan_time_ms}ms)
-      </span>
-      <span className={scan.aim_verdict === 'pass' ? 'badge-pass' : scan.aim_verdict === 'block' ? 'badge-block' : 'badge-error'}>
-        AIM: {scan.aim_verdict} ({scan.aim_scan_time_ms}ms)
-      </span>
-    </div>
-  )
 
   return (
     <div className="space-y-4">
@@ -184,7 +174,13 @@ export default function Documents() {
             {result.security_scan && (
               <div className="mt-4 pt-4 border-t">
                 <h4 className="text-sm font-medium mb-2">Security Scan</h4>
-                <SecurityBadge scan={result.security_scan} />
+                <SecurityBadges
+                  toolResults={result.security_scan?.tool_results}
+                  hlVerdict={result.security_scan?.hl_verdict}
+                  hlScanTimeMs={result.security_scan?.hl_scan_time_ms}
+                  aimVerdict={result.security_scan?.aim_verdict}
+                  aimScanTimeMs={result.security_scan?.aim_scan_time_ms}
+                />
               </div>
             )}
           </div>

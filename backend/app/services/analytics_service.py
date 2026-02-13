@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.models.patient import Patient
 from app.services.ollama_service import ollama_service
-from app.services.security_service import dual_security_scan
+from app.services.security_service import security_scan
 from app.exceptions import AIMBlockedException
 
 
@@ -76,7 +76,7 @@ class AnalyticsService:
             f"Current Risk Score: {patient.risk_score}"
         )
 
-        input_scan = await dual_security_scan(
+        input_scan = await security_scan(
             content=patient_info, scan_type="input", feature_name="risk_calculation"
         )
         if input_scan["blocked"]:
@@ -89,7 +89,7 @@ class AnalyticsService:
         except AIMBlockedException as e:
             return {"patient_id": patient_id, "blocked": True, "blocked_by": "AIM", "blocked_reason": e.reason}
 
-        output_scan = await dual_security_scan(
+        output_scan = await security_scan(
             content=json.dumps(ai_result), scan_type="output", feature_name="risk_calculation"
         )
 
@@ -122,7 +122,7 @@ class AnalyticsService:
         avg_risk = sum(p.risk_score or 0 for p in patients) / max(len(patients), 1)
         summary += f"Average risk score: {avg_risk:.1f}"
 
-        input_scan = await dual_security_scan(
+        input_scan = await security_scan(
             content=query, scan_type="input", feature_name="trend_analysis"
         )
         if input_scan["blocked"]:
@@ -134,7 +134,7 @@ class AnalyticsService:
         except AIMBlockedException as e:
             return {"query": query, "blocked": True, "blocked_by": "AIM", "blocked_reason": e.reason}
 
-        output_scan = await dual_security_scan(
+        output_scan = await security_scan(
             content=analysis, scan_type="output", feature_name="trend_analysis"
         )
         if output_scan["blocked"]:
@@ -159,7 +159,7 @@ class AnalyticsService:
             f"Risk Score: {patient.risk_score}, Last Visit: {patient.last_visit}"
         )
 
-        input_scan = await dual_security_scan(
+        input_scan = await security_scan(
             content=patient_info, scan_type="input", feature_name="readmission_prediction"
         )
         if input_scan["blocked"]:

@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.models.document import Document
 from app.services.ollama_service import ollama_service
-from app.services.security_service import dual_security_scan
+from app.services.security_service import security_scan, get_block_reason
 from app.exceptions import AIMBlockedException
 
 settings = get_settings()
@@ -66,20 +66,17 @@ class DocumentService:
         text = await self._read_file(doc.file_path)
 
         # Scan document content for prompt injection
-        input_scan = await dual_security_scan(
+        input_scan = await security_scan(
             content=text,
             scan_type="input",
             feature_name="document_extraction",
         )
         if input_scan["blocked"]:
-            blocked_by = input_scan["blocked_by"][0] if input_scan["blocked_by"] else "Security"
-            hl_reason = input_scan["hidden_layer_result"].get("reason")
-            aim_reason = input_scan["aim_result"].get("reason")
             return {
                 "document_id": doc_id,
                 "blocked": True,
-                "blocked_by": blocked_by,
-                "blocked_reason": hl_reason or aim_reason,
+                "blocked_by": ", ".join(input_scan["blocked_by"]),
+                "blocked_reason": get_block_reason(input_scan),
                 "security_scan": input_scan,
             }
 
@@ -96,20 +93,17 @@ class DocumentService:
             }
 
         # Scan output
-        output_scan = await dual_security_scan(
+        output_scan = await security_scan(
             content=json.dumps(extracted),
             scan_type="output",
             feature_name="document_extraction",
         )
         if output_scan["blocked"]:
-            blocked_by = output_scan["blocked_by"][0] if output_scan["blocked_by"] else "Security"
-            hl_reason = output_scan["hidden_layer_result"].get("reason")
-            aim_reason = output_scan["aim_result"].get("reason")
             return {
                 "document_id": doc_id,
                 "blocked": True,
-                "blocked_by": blocked_by,
-                "blocked_reason": hl_reason or aim_reason,
+                "blocked_by": ", ".join(output_scan["blocked_by"]),
+                "blocked_reason": get_block_reason(output_scan),
                 "security_scan": output_scan,
             }
 
@@ -131,7 +125,7 @@ class DocumentService:
 
         text = await self._read_file(doc.file_path)
 
-        input_scan = await dual_security_scan(
+        input_scan = await security_scan(
             content=text,
             scan_type="input",
             feature_name="document_classification",
