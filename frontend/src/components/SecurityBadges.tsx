@@ -11,9 +11,16 @@ function getLabel(toolName: string): string {
 
 function badgeClass(verdict?: string): string {
   if (!verdict) return 'badge-error'
-  if (verdict === 'pass' || verdict === 'skip') return 'badge-pass'
+  if (verdict === 'pass' || verdict === 'skip' || verdict === 'detected') return 'badge-pass'
   if (verdict === 'block') return 'badge-block'
   return 'badge-error'
+}
+
+// Map internal verdicts to user-friendly display text
+function displayVerdict(verdict?: string): string {
+  if (!verdict) return 'unknown'
+  if (verdict === 'detected') return 'pass'  // Non-blocking detection = pass
+  return verdict
 }
 
 interface SecurityBadgesProps {
@@ -34,7 +41,7 @@ export default function SecurityBadges({ toolResults, hlVerdict, aimVerdict, hlS
       <div className="flex gap-2 flex-wrap">
         {Object.entries(toolResults).map(([name, result]) => (
           <span key={name} className={badgeClass(result.verdict)}>
-            {getLabel(name)}: {result.verdict}
+            {getLabel(name)}: {displayVerdict(result.verdict)}
             {!compact && result.scan_time_ms ? ` (${result.scan_time_ms}ms)` : ''}
           </span>
         ))}
@@ -50,12 +57,12 @@ export default function SecurityBadges({ toolResults, hlVerdict, aimVerdict, hlS
     <div className="flex gap-2 flex-wrap">
       {hlVerdict && (
         <span className={badgeClass(hlVerdict)}>
-          HL: {hlVerdict}{!compact && hlScanTimeMs ? ` (${hlScanTimeMs}ms)` : ''}
+          HL: {displayVerdict(hlVerdict)}{!compact && hlScanTimeMs ? ` (${hlScanTimeMs}ms)` : ''}
         </span>
       )}
       {aimVerdict && (
         <span className={badgeClass(aimVerdict)}>
-          AIM: {aimVerdict}{!compact && aimScanTimeMs ? ` (${aimScanTimeMs}ms)` : ''}
+          AIM: {displayVerdict(aimVerdict)}{!compact && aimScanTimeMs ? ` (${aimScanTimeMs}ms)` : ''}
         </span>
       )}
     </div>

@@ -126,16 +126,16 @@ class HiddenLayerClient(SecurityTool):
                         "guardrail": "block_guardrail_detection",
                     }
 
-                    detected = []
                     should_block = False
                     for cat_key, block_key in category_block_map.items():
                         if categories.get(cat_key):
-                            detected.append(cat_key.replace("_", " "))
                             if policy.get(block_key) or policy.get("block_unsafe"):
                                 should_block = True
 
-                    reason = ", ".join(detected) if detected else "security violation"
-                    verdict = "block" if should_block else "detected"
+                    if should_block:
+                        verdict = "block"
+                        # Use HL's own response message as the block reason
+                        reason = data.get("response", {}).get("output", "Blocked by Hidden Layer policy")
 
                 return {
                     "verdict": verdict,

@@ -251,7 +251,7 @@ export default function Security() {
                   {Object.entries(selectedLog.tool_results).map(([name, result]) => (
                     <div key={name} className="p-3 bg-blue-50 rounded-lg">
                       <h4 className="font-semibold text-blue-700 mb-1 capitalize">{name.replace(/_/g, ' ')}</h4>
-                      <p>Verdict: <span className={result.verdict === 'pass' || result.verdict === 'skip' ? 'text-green-600 font-medium' : result.verdict === 'block' ? 'text-red-600 font-medium' : 'text-yellow-600 font-medium'}>{result.verdict}</span></p>
+                      <p>Verdict: <span className={result.verdict === 'pass' || result.verdict === 'skip' || result.verdict === 'detected' ? 'text-green-600 font-medium' : result.verdict === 'block' ? 'text-red-600 font-medium' : 'text-yellow-600 font-medium'}>{result.verdict === 'detected' ? 'pass' : result.verdict}</span></p>
                       {result.scan_time_ms > 0 && <p>Time: {result.scan_time_ms}ms</p>}
                       {result.reason && <p>Reason: {result.reason}</p>}
                     </div>
