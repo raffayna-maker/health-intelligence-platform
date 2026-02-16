@@ -41,6 +41,8 @@ class HiddenLayerClient(SecurityTool):
     def __init__(self):
         self.client_id = settings.hiddenlayer_client_id
         self.client_secret = settings.hiddenlayer_client_secret
+        self.api_url = settings.hiddenlayer_api_url
+        self.project_id = settings.hiddenlayer_project_id
         self._token: Optional[str] = None
         self._token_expiry: float = 0
 
@@ -69,7 +71,7 @@ class HiddenLayerClient(SecurityTool):
 
         try:
             token = await self._get_token()
-            api_url = "https://api.hiddenlayer.ai/api/v1/submit/prompt-analyzer"
+            api_url = f"{self.api_url}/api/v1/submit/prompt-analyzer"
 
             payload = {"model": "healthcare-platform"}
             if scan_type == "input":
@@ -91,6 +93,8 @@ class HiddenLayerClient(SecurityTool):
                 "Content-Type": "application/json",
                 "X-Requester-Id": "healthcare-platform",
             }
+            if self.project_id:
+                headers["HL-Project-ID"] = self.project_id
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(api_url, headers=headers, json=payload)

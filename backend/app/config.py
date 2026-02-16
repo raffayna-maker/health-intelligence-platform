@@ -38,6 +38,7 @@ class Settings(BaseSettings):
         default="https://api.hiddenlayer.ai",
         env="HIDDENLAYER_API_URL"
     )
+    hiddenlayer_project_id: str = Field(default="", env="HIDDENLAYER_PROJECT_ID")
     
     # AIM
     aim_api_key: str = Field(..., env="AIM_API_KEY")
