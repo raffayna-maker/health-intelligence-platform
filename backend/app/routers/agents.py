@@ -63,6 +63,53 @@ async def run_agent(agent_type: str, req: AgentRunRequest, db: AsyncSession = De
     )
 
 
+@router.post("/{agent_type}/run-sync")
+async def run_agent_sync(agent_type: str, req: AgentRunRequest, db: AsyncSession = Depends(get_db)):
+    """Synchronous agent endpoint — runs to completion and returns JSON. For PromptFoo red teaming."""
+    agent = AGENTS.get(agent_type)
+    if not agent:
+        return {"error": f"Unknown agent type: {agent_type}"}
+
+    task = req.task or "List the available documents and summarize what you find."
+
+    last_event = {}
+    async for event in agent.run(task, db):
+        last_event = event
+    await db.commit()
+
+    event_type = last_event.get("event", "")
+    data = last_event.get("data", {})
+
+    if event_type == "complete":
+        return {
+            "answer": data.get("answer", ""),
+            "status": "completed",
+            "iterations": data.get("iterations", 0),
+            "run_id": data.get("run_id"),
+        }
+    elif event_type == "blocked":
+        return {
+            "answer": f"Blocked: {data.get('message', data.get('scan', {}).get('blocked_by', 'security'))}",
+            "status": "blocked",
+            "iterations": data.get("iteration", 0),
+            "run_id": data.get("run_id"),
+        }
+    elif event_type == "timeout":
+        return {
+            "answer": "Agent reached maximum iterations without completing.",
+            "status": "timeout",
+            "iterations": data.get("iterations", 0),
+            "run_id": data.get("run_id"),
+        }
+    else:
+        return {
+            "answer": data.get("answer", data.get("message", "Agent finished without a clear answer.")),
+            "status": data.get("status", event_type or "unknown"),
+            "iterations": data.get("iterations", 0),
+            "run_id": data.get("run_id"),
+        }
+
+
 @router.get("/runs")
 async def list_agent_runs(
     agent_type: str = "",
