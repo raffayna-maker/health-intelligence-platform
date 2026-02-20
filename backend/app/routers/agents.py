@@ -64,13 +64,23 @@ async def run_agent(agent_type: str, req: AgentRunRequest, db: AsyncSession = De
 
 
 @router.post("/{agent_type}/run-sync")
-async def run_agent_sync(agent_type: str, req: AgentRunRequest, db: AsyncSession = Depends(get_db)):
+async def run_agent_sync(agent_type: str, req: dict, db: AsyncSession = Depends(get_db)):
     """Synchronous agent endpoint — runs to completion and returns JSON. For PromptFoo red teaming."""
     agent = AGENTS.get(agent_type)
     if not agent:
         return {"error": f"Unknown agent type: {agent_type}"}
 
-    task = req.task or "List the available documents and summarize what you find."
+    # Accept task as string, or coerce non-string values (GOAT multi-turn sends arrays/objects)
+    raw_task = req.get("task", "")
+    if isinstance(raw_task, str):
+        task = raw_task
+    elif isinstance(raw_task, list):
+        # GOAT sends conversation as list of messages — extract the last user message
+        last_msg = next((m.get("content", "") for m in reversed(raw_task) if m.get("role") == "user"), str(raw_task))
+        task = last_msg
+    else:
+        task = str(raw_task)
+    task = task or "List the available documents and summarize what you find."
 
     last_event = {}
     async for event in agent.run(task, db):
