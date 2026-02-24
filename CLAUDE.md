@@ -67,10 +67,16 @@ aws ssm start-session \
 - Output scans REQUIRE `prompt` param or return `verdict: "error"`
 
 **3. PromptFoo (Adaptive Guardrails - INPUT only)**
-- API: `https://www.promptfoo.app/api/v1/guardrails/{target_id}/analyze`
-- Bearer token auth
+- API: `https://www.promptfoo.app/api/v1/guardrails/{target_id}/evaluate`
+- Bearer token auth (API token, NOT the CLI auth token)
+- Payload: `{"placement": "INPUT", "messages": [{"role": "user", "content": "..."}]}`
+- Response: `{"action": "allow|log|warn|block", "severity": 0-1, "guardrailResults": [...]}`
+- Actions map to verdicts: `block` → blocked, everything else → pass
+- Supports 4 placements: INPUT, OUTPUT, TOOL_CALL_INPUT, TOOL_CALL_OUTPUT (only INPUT used currently)
+- Action thresholds: Allow (< log), Log (log-warn), Warn (warn-block), Block (>= block)
 - Output scans return `verdict: "skip"`
 - Returns `"error"` if not configured
+- Guardrail target ID: `109ca368-9b6c-4c20-99c9-e0323927e031`
 
 ### Dynamic N-Tool Architecture (`security_service.py`)
 - `SecurityTool` ABC -> `HiddenLayerClient`, `PromptFooClient` (extensible)
@@ -204,3 +210,61 @@ docker-compose exec postgres psql -U healthcare -d healthcare -c \
 
 ### Not Yet Working
 - Appointment Follow-up Agent (SSE rendering issues, email sending unconfirmed)
+
+## PromptFoo Red Team Target Setup Guide
+
+When creating a new target in PromptFoo for red teaming, these are the UI fields and how to configure them.
+
+### Target Selection
+| Field | Value |
+|-------|-------|
+| Target Name | e.g., `healthcare-research-agent` or `healthcare-assistant` |
+| Provider | **HTTP/HTTPS Endpoint** |
+
+### HTTP Endpoint Configuration
+| Field | Value |
+|-------|-------|
+| URL | The endpoint URL (e.g., `http://localhost:8080/api/agents/research/run-sync`) |
+| Method | `POST` |
+| Headers | `Content-Type: application/json` |
+| Request Body (JSON) | Must include `{{prompt}}` template variable. E.g., `{"task":"{{prompt}}"}` for agent, `{"question":"{{prompt}}","use_rag":true}` for assistant |
+| Response Parser | JSON path to the answer field. E.g., `json.answer` for agent, `json.answer` for assistant |
+
+### Session Management
+| Field | Value |
+|-------|-------|
+| Stateful? | **No** — each request is independent (no conversation history) |
+
+### Authorization / Request Transform / Token Estimation
+- **Auth**: No Auth (our endpoints are unauthenticated)
+- **Request Transform**: Leave empty
+- **Token Estimation**: Leave disabled
+
+### Test Generation
+| Field | Value |
+|-------|-------|
+| Instructions | Optional. E.g., `Frame attacks as research tasks` or leave empty |
+| Delay | `1000` ms recommended (agent requests are slow) |
+
+### Application Details (fill all for better attack quality)
+| Field | What to provide |
+|-------|----------------|
+| **Main purpose** | Describe what the endpoint does (required) |
+| **Key features** | List capabilities: document reading, web search, RAG, etc. |
+| **Industry** | `Healthcare, Clinical Research` |
+| **Attacker rules** | Describe input format, what tools the system has, how attacks should be framed |
+| **Systems it HAS access to** | Patient documents, databases, vector store, web search |
+| **Systems it should NOT access** | Direct DB queries, file system, credentials, ability to modify data |
+| **User types** | Healthcare providers, researchers, administrators |
+| **Security/compliance** | HIPAA, PII protection, audit logging, defense-in-depth scanning |
+| **Sensitive data** | PHI, SSNs (XXX-XX-XXXX), phone numbers, emails, DOB, diagnoses, medications |
+| **Example identifiers** | Patient IDs (PT-001 to PT-200), SSNs, emails, phone numbers, document IDs |
+| **Critical/dangerous actions** | PII leakage, cross-patient data access, data exfiltration, medical advice |
+| **Content to never discuss** | Self-harm, drugs, violence, weapons, sexual content, political opinions |
+| **Who uses this system** | Healthcare provider reviewing records, clinical researcher analyzing documents |
+
+### Existing Targets
+| Target | Endpoint | Request Body | Response Parser |
+|--------|----------|-------------|-----------------|
+| Clinical Assistant | `/api/assistant/query` | `{"question":"{{prompt}}","use_rag":true}` | `json.answer` |
+| Research Agent | `/api/agents/research/run-sync` | `{"task":"{{prompt}}"}` | `json.answer` |

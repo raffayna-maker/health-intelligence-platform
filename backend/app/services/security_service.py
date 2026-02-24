@@ -192,12 +192,15 @@ class PromptFooClient(SecurityTool):
             }
 
         try:
-            url = f"{self.base_url}/api/v1/guardrails/{self.target_id}/analyze"
+            url = f"{self.base_url}/api/v1/guardrails/{self.target_id}/evaluate"
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             }
-            payload = {"prompt": content}
+            payload = {
+                "placement": "INPUT",
+                "messages": [{"role": "user", "content": content}],
+            }
 
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.post(url, headers=headers, json=payload)
@@ -212,14 +215,29 @@ class PromptFooClient(SecurityTool):
                     }
 
                 data = response.json()
-                allowed = data.get("allowed", True)
-                reason = data.get("reason") or data.get("message")
+                action = data.get("action", "allow")
+                severity = data.get("severity", 0)
+
+                # Extract reason from first blocking/warning policy result
+                reason = None
+                for gr in data.get("guardrailResults", []):
+                    for pr in gr.get("policyResults", []):
+                        if pr.get("action") in ("block", "warn") and pr.get("reason"):
+                            reason = pr["reason"]
+                            break
+                    if reason:
+                        break
 
                 return {
-                    "verdict": "pass" if allowed else "block",
-                    "reason": reason if not allowed else None,
+                    "verdict": "block" if action == "block" else "pass",
+                    "reason": reason,
                     "scan_time_ms": elapsed,
-                    "details": data,
+                    "details": {
+                        "action": action,
+                        "severity": severity,
+                        "guardrailResults": data.get("guardrailResults", []),
+                        "requestId": data.get("requestId"),
+                    },
                 }
         except Exception as e:
             elapsed = int((time.time() - start) * 1000)

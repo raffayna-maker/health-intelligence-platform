@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     promptfoo_api_key: str = Field(default="", env="PROMPTFOO_API_KEY")
     promptfoo_target_id: str = Field(default="", env="PROMPTFOO_TARGET_ID")
     promptfoo_api_url: str = Field(
-        default="https://api.promptfoo.app",
+        default="https://www.promptfoo.app",
         env="PROMPTFOO_API_URL"
     )
 
