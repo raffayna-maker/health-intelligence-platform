@@ -228,12 +228,14 @@ class PromptFooClient(SecurityTool):
                             if not reason and pr.get("reason"):
                                 reason = pr["reason"]
 
-                # Fall back to policy name + score if no reason text
+                # Fall back to policy name if no reason text
                 if not reason and triggering_policies:
                     policy = triggering_policies[0]
                     policy_name = policy.get("policyName", policy.get("policy", "Unknown policy"))
-                    score = policy.get("score", "")
-                    reason = f"{policy_name} (score: {score})" if score else policy_name
+                    policy_score = policy.get("score")
+                    # Use policy-level score if available, otherwise top-level severity
+                    display_score = policy_score if policy_score is not None else severity
+                    reason = f"{policy_name} (score: {display_score})" if display_score else policy_name
 
                 # Last resort: use top-level action + severity from PF
                 if not reason and action == "block":
