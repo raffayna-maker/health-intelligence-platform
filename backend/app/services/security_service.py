@@ -218,15 +218,26 @@ class PromptFooClient(SecurityTool):
                 action = data.get("action", "allow")
                 severity = data.get("severity", 0)
 
-                # Extract reason from first blocking/warning policy result
+                # Extract reason from PF response — try multiple fields
                 reason = None
+                triggering_policies = []
                 for gr in data.get("guardrailResults", []):
                     for pr in gr.get("policyResults", []):
-                        if pr.get("action") in ("block", "warn") and pr.get("reason"):
-                            reason = pr["reason"]
-                            break
-                    if reason:
-                        break
+                        if pr.get("action") in ("block", "warn"):
+                            triggering_policies.append(pr)
+                            if not reason and pr.get("reason"):
+                                reason = pr["reason"]
+
+                # Fall back to policy name + score if no reason text
+                if not reason and triggering_policies:
+                    policy = triggering_policies[0]
+                    policy_name = policy.get("policyName", policy.get("policy", "Unknown policy"))
+                    score = policy.get("score", "")
+                    reason = f"{policy_name} (score: {score})" if score else policy_name
+
+                # Last resort: use top-level action + severity from PF
+                if not reason and action == "block":
+                    reason = f"Blocked by PromptFoo (severity: {severity})"
 
                 return {
                     "verdict": "block" if action == "block" else "pass",
@@ -264,13 +275,19 @@ def get_active_tools() -> List[SecurityTool]:
 
 def get_block_reason(scan_result: Dict[str, Any]) -> str:
     """Extract the first block reason from any tool in the scan result."""
-    for result in scan_result.get("tool_results", {}).values():
+    # Priority 1: reason from the tool that actually blocked
+    for tool_name, result in scan_result.get("tool_results", {}).items():
         if result.get("verdict") == "block" and result.get("reason"):
             return result["reason"]
-    for result in scan_result.get("tool_results", {}).values():
+    # Priority 2: any reason from any tool
+    for tool_name, result in scan_result.get("tool_results", {}).items():
         if result.get("reason"):
             return result["reason"]
-    return "Security violation"
+    # Priority 3: name the blocking tools
+    blocked_by = scan_result.get("blocked_by", [])
+    if blocked_by:
+        return f"Blocked by {', '.join(blocked_by)}"
+    return "Security violation detected"
 
 
 async def security_scan(
