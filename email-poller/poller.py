@@ -17,6 +17,8 @@ import smtplib
 import subprocess
 import threading
 import time
+from datetime import date
+from email.header import decode_header as _decode_header
 from email.mime.text import MIMEText
 
 import requests
@@ -39,14 +41,21 @@ def send_reply(to: str, subject: str, body: str) -> None:
     msg["Subject"] = subject
     msg["From"]    = GMAIL
     msg["To"]      = to
+    print(f"[reply] attempting SMTP send to={to!r} subject={subject!r}")
     try:
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
+            s.set_debuglevel(0)
             s.starttls()
             s.login(GMAIL, PASSWD)
-            s.send_message(msg)
-        print(f"[reply] sent to {to}: {subject}")
+            refused = s.send_message(msg)
+            if refused:
+                print(f"[reply] WARNING — some recipients refused: {refused}")
+            else:
+                print(f"[reply] SUCCESS — sent to {to}")
+    except smtplib.SMTPException as e:
+        print(f"[reply] SMTP ERROR: {type(e).__name__}: {e}")
     except Exception as e:
-        print(f"[reply] SMTP error sending to {to}: {e}")
+        print(f"[reply] ERROR: {type(e).__name__}: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -150,11 +159,24 @@ def get_body(msg) -> str:
     return msg.get_payload(decode=True).decode(charset, errors="replace").strip()
 
 
+def decode_subject(raw_subject: str) -> str:
+    """Decode RFC 2047-encoded email subject to a plain string."""
+    parts = _decode_header(raw_subject or "")
+    decoded = []
+    for part, charset in parts:
+        if isinstance(part, bytes):
+            decoded.append(part.decode(charset or "utf-8", errors="replace"))
+        else:
+            decoded.append(part)
+    return "".join(decoded).strip()
+
+
 def handle(raw: bytes) -> None:
-    msg     = email_lib.message_from_bytes(raw)
-    subject = (msg.get("Subject") or "").strip()
-    sender  = msg.get("From") or ""
-    body    = get_body(msg)
+    msg            = email_lib.message_from_bytes(raw)
+    raw_subject    = msg.get("Subject") or ""
+    subject        = decode_subject(raw_subject)
+    sender         = msg.get("From") or ""
+    body           = get_body(msg)
 
     subject_upper = subject.upper()
 
@@ -177,10 +199,13 @@ def poll() -> None:
             with imaplib.IMAP4_SSL(IMAP_HOST) as imap:
                 imap.login(GMAIL, PASSWD)
                 imap.select("INBOX")
-                _, data = imap.search(None, "UNSEEN")
+                # Only fetch UNSEEN emails received today — avoids processing
+                # the entire historical inbox on startup
+                today = date.today().strftime("%d-%b-%Y")  # e.g. "27-Feb-2026"
+                _, data = imap.search(None, "UNSEEN", f'SINCE "{today}"')
                 ids = data[0].split()
                 if ids:
-                    print(f"[poller] {len(ids)} unseen message(s)")
+                    print(f"[poller] {len(ids)} new unseen message(s) since {today}")
                 for mid in ids:
                     try:
                         _, msg_data = imap.fetch(mid, "(RFC822)")
