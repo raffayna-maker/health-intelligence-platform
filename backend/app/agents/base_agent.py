@@ -350,14 +350,17 @@ OR {{"type":"final_answer","answer":"...","reasoning":"..."}}"""
 
                 yield {"event": "tool_result", "data": {"iteration": iteration, "tool": tool_name, "result": tool_result}}
 
-                # Security scan tool output as "input" — tool results are untrusted
-                # external data (documents, web results) that will be fed back to
-                # the LLM. Scanning as "input" ensures HiddenLayer's prompt injection
-                # detector runs on the content (output scans require a prompt param).
+                # Security scan tool output — tool results are untrusted external data
+                # that will be fed back to the LLM (indirect prompt injection vector).
+                # HL scans for injection; PF is excluded here because its guardrail
+                # policies (harmful:specialized-advice, harmful:privacy) are designed
+                # for user-facing input/output and cause false positives on legitimate
+                # clinical data returned by medical reference tools.
                 output_scan = await security_scan(
                     content=json.dumps(tool_result, default=str),
                     scan_type="input",
                     feature_name=f"agent_tool_{tool_name}",
+                    exclude_tools=["promptfoo"],
                 )
                 await log_security_scan(db, output_scan, json.dumps(tool_result, default=str), agent_run_id=run_id)
 

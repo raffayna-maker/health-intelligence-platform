@@ -295,9 +295,12 @@ async def security_scan(
     scan_type: str = "input",
     feature_name: str = "unknown",
     prompt: Optional[str] = None,
+    exclude_tools: list = None,
 ) -> Dict[str, Any]:
     """Perform security scan with all active tools in parallel."""
     tools = get_active_tools()
+    if exclude_tools:
+        tools = [t for t in tools if t.tool_name not in exclude_tools]
 
     if not tools:
         return {
