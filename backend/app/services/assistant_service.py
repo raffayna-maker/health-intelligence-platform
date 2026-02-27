@@ -26,6 +26,7 @@ class AssistantService:
         patient_id: Optional[str],
         use_rag: bool,
         db: AsyncSession,
+        allowed_patient_ids: Optional[List[str]] = None,
     ) -> AssistantResponse:
         # Step 1: Run input security scan and RAG lookup in parallel
         async def _retrieve_context():
@@ -39,6 +40,16 @@ class AssistantService:
                         lookup_id = match.group(0).upper()
 
                 if lookup_id:
+                    # Permission check: if user has a restricted patient list and this
+                    # patient isn't in it, inject a denial context so the LLM explains why
+                    if allowed_patient_ids is not None and lookup_id not in allowed_patient_ids:
+                        ctx = (
+                            f"[PERMISSION DENIED]: The current user does not have access to "
+                            f"patient {lookup_id}. This patient is not in their assigned patient "
+                            f"list. Inform the user they are not authorized to access this patient's records."
+                        )
+                        return ctx, srcs
+
                     direct = chromadb_service.get_by_id(lookup_id)
                     if direct and direct.get("documents") and direct["documents"]:
                         doc = direct["documents"][0]
@@ -48,7 +59,9 @@ class AssistantService:
 
                 if not srcs:
                     query_embedding = await ollama_service.embed(question)
-                    results = chromadb_service.search(query_embedding, n_results=5)
+                    results = chromadb_service.search_filtered(
+                        query_embedding, n_results=5, allowed_ids=allowed_patient_ids
+                    )
                     if results and results.get("documents") and results["documents"][0]:
                         for i, doc in enumerate(results["documents"][0]):
                             metadata = results["metadatas"][0][i] if results.get("metadatas") else {}

@@ -1,8 +1,19 @@
 const API_BASE = '/api'
 
+// Module-level auth token store — set by UserContext when user selects/clears
+let _authToken: string | null = null
+
+export function setAuthToken(token: string | null) {
+  _authToken = token
+}
+
+function authHeaders(): Record<string, string> {
+  return _authToken ? { Authorization: `Bearer ${_authToken}` } : {}
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(), ...options?.headers },
     ...options,
   })
   if (!res.ok) {
@@ -36,7 +47,11 @@ export const getDocuments = () => request<any>('/documents')
 export const uploadDocument = async (file: File) => {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await fetch(`${API_BASE}/documents/upload`, { method: 'POST', body: formData })
+  const res = await fetch(`${API_BASE}/documents/upload`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: formData,
+  })
   if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
   return res.json()
 }
@@ -82,14 +97,13 @@ export function runAgent(agentType: string, task?: string): EventSource {
   const params = new URLSearchParams()
   const url = `${API_BASE}/agents/${agentType}/run`
   const eventSource = new EventSource(url)
-  // POST-based SSE needs a different approach - use fetch
   return eventSource
 }
 
 export async function runAgentStream(agentType: string, task?: string): Promise<Response> {
   return fetch(`${API_BASE}/agents/${agentType}/run`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ task }),
   })
 }

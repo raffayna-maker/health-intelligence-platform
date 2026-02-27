@@ -1,5 +1,6 @@
-import { ReactNode } from 'react'
+import React, { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
+import { useUser } from '../context/UserContext'
 
 const tabs = [
   { path: '/', label: 'Dashboard', icon: '📊' },
@@ -12,7 +13,24 @@ const tabs = [
   { path: '/security', label: 'Security', icon: '🔐' },
 ]
 
+const roleBadgeClass: Record<string, string> = {
+  admin: 'bg-blue-100 text-blue-700',
+  doctor: 'bg-green-100 text-green-700',
+  nurse: 'bg-yellow-100 text-yellow-700',
+}
+
 export default function Layout({ children }: { children: ReactNode }) {
+  const { currentUser, allUsers, selectUser, clearUser } = useUser()
+
+  function handleUserChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const val = e.target.value
+    if (!val) {
+      clearUser()
+    } else {
+      selectUser(val).catch(console.error)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -24,9 +42,24 @@ export default function Layout({ children }: { children: ReactNode }) {
             </div>
             <h1 className="text-xl font-bold text-gray-900">Healthcare Intelligence Platform</h1>
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-            Admin User
+          <div className="flex items-center gap-2">
+            {currentUser && (
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${roleBadgeClass[currentUser.role] || 'bg-gray-100 text-gray-700'}`}>
+                {currentUser.role}
+              </span>
+            )}
+            <select
+              value={currentUser?.username || ''}
+              onChange={handleUserChange}
+              className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">No auth (Admin)</option>
+              {allUsers.map(u => (
+                <option key={u.username} value={u.username}>
+                  {u.display_name} [{u.role}]
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </header>

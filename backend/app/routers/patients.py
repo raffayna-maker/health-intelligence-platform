@@ -4,8 +4,16 @@ from sqlalchemy import select, func, or_
 from app.database import get_db
 from app.models.patient import Patient
 from app.schemas.patient import PatientCreate, PatientUpdate, PatientResponse, PatientListResponse
+from app.auth import get_current_user, UserPrincipal
 
 router = APIRouter()
+
+
+def _apply_role_restrictions(response: PatientResponse, user: UserPrincipal) -> PatientResponse:
+    """Strip fields the current role is not permitted to see."""
+    if not user.can_see_ssn:
+        response.ssn = None
+    return response
 
 
 @router.get("", response_model=PatientListResponse)
@@ -15,8 +23,14 @@ async def list_patients(
     search: str = Query("", description="Search by name, ID, or condition"),
     risk_level: str = Query("", description="Filter: high, medium, low"),
     db: AsyncSession = Depends(get_db),
+    current_user: UserPrincipal = Depends(get_current_user),
 ):
     query = select(Patient)
+
+    # Permission filter — admin sees all, others see assigned patients only
+    allowed_ids = current_user.get_allowed_patient_ids()
+    if allowed_ids is not None:
+        query = query.where(Patient.patient_id.in_(allowed_ids))
 
     if search:
         query = query.where(
@@ -43,8 +57,13 @@ async def list_patients(
     result = await db.execute(query)
     patients = result.scalars().all()
 
+    patient_responses = [
+        _apply_role_restrictions(PatientResponse.model_validate(p), current_user)
+        for p in patients
+    ]
+
     return PatientListResponse(
-        patients=[PatientResponse.model_validate(p) for p in patients],
+        patients=patient_responses,
         total=total,
         page=page,
         page_size=page_size,
@@ -52,20 +71,34 @@ async def list_patients(
 
 
 @router.get("/{patient_id}", response_model=PatientResponse)
-async def get_patient(patient_id: str, db: AsyncSession = Depends(get_db)):
+async def get_patient(
+    patient_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserPrincipal = Depends(get_current_user),
+):
+    if not current_user.has_access_to_patient(patient_id):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Access denied: {patient_id} is not in your assigned patients",
+        )
     result = await db.execute(select(Patient).where(Patient.patient_id == patient_id))
     patient = result.scalar_one_or_none()
     if not patient:
         raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
-    return PatientResponse.model_validate(patient)
+    return _apply_role_restrictions(PatientResponse.model_validate(patient), current_user)
 
 
 @router.post("", response_model=PatientResponse, status_code=201)
-async def create_patient(data: PatientCreate, db: AsyncSession = Depends(get_db)):
+async def create_patient(
+    data: PatientCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserPrincipal = Depends(get_current_user),
+):
+    if not current_user.can_write:
+        raise HTTPException(status_code=403, detail="Your role does not permit creating patients")
+
     # Generate next patient ID
-    max_id_result = await db.scalar(
-        select(func.max(Patient.id))
-    )
+    max_id_result = await db.scalar(select(func.max(Patient.id)))
     next_num = (max_id_result or 0) + 1
     patient_id = f"PT-{str(next_num).zfill(3)}"
 
@@ -77,7 +110,17 @@ async def create_patient(data: PatientCreate, db: AsyncSession = Depends(get_db)
 
 
 @router.put("/{patient_id}", response_model=PatientResponse)
-async def update_patient(patient_id: str, data: PatientUpdate, db: AsyncSession = Depends(get_db)):
+async def update_patient(
+    patient_id: str,
+    data: PatientUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserPrincipal = Depends(get_current_user),
+):
+    if not current_user.can_write:
+        raise HTTPException(status_code=403, detail="Your role does not permit updating patients")
+    if not current_user.has_access_to_patient(patient_id):
+        raise HTTPException(status_code=403, detail=f"Access denied: {patient_id} is not in your assigned patients")
+
     result = await db.execute(select(Patient).where(Patient.patient_id == patient_id))
     patient = result.scalar_one_or_none()
     if not patient:
@@ -93,7 +136,16 @@ async def update_patient(patient_id: str, data: PatientUpdate, db: AsyncSession 
 
 
 @router.delete("/{patient_id}")
-async def delete_patient(patient_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_patient(
+    patient_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserPrincipal = Depends(get_current_user),
+):
+    if not current_user.can_write:
+        raise HTTPException(status_code=403, detail="Your role does not permit deleting patients")
+    if not current_user.has_access_to_patient(patient_id):
+        raise HTTPException(status_code=403, detail=f"Access denied: {patient_id} is not in your assigned patients")
+
     result = await db.execute(select(Patient).where(Patient.patient_id == patient_id))
     patient = result.scalar_one_or_none()
     if not patient:

@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     # Legacy alias — still works if set in .env, but runtime toggle is preferred for demos
     mcp_server_url: str = Field(default="http://mcp-server:5010", env="MCP_SERVER_URL")
 
+    # JWT Auth
+    jwt_secret_key: str = Field(
+        default="healthcare-demo-jwt-secret-change-in-production",
+        env="JWT_SECRET_KEY",
+    )
+
     # File uploads
     upload_dir: str = Field(default="/app/uploads", env="UPLOAD_DIR")
 

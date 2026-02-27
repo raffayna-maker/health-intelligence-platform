@@ -34,6 +34,22 @@ class ChromaDBService:
         )
         return results
 
+    def search_filtered(
+        self,
+        query_embedding: list[float],
+        n_results: int = 5,
+        allowed_ids: list = None,
+    ) -> dict:
+        """Search with optional patient_id whitelist. allowed_ids=None means no filter (admin)."""
+        kwargs = {
+            "query_embeddings": [query_embedding],
+            "n_results": n_results,
+            "include": ["documents", "metadatas", "distances"],
+        }
+        if allowed_ids is not None:
+            kwargs["where"] = {"patient_id": {"$in": allowed_ids}}
+        return self.collection.query(**kwargs)
+
     def get_all_ids(self) -> list[str]:
         result = self.collection.get(include=[])
         return result["ids"]

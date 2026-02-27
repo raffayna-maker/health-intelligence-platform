@@ -5,17 +5,23 @@ from app.database import get_db
 from app.schemas.assistant import AssistantQuery, AssistantResponse
 from app.services.assistant_service import assistant_service
 from app.models.security_log import SecurityLog
+from app.auth import get_current_user, UserPrincipal
 
 router = APIRouter()
 
 
 @router.post("/query", response_model=AssistantResponse)
-async def query_assistant(req: AssistantQuery, db: AsyncSession = Depends(get_db)):
+async def query_assistant(
+    req: AssistantQuery,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserPrincipal = Depends(get_current_user),
+):
     return await assistant_service.query(
         question=req.question,
         patient_id=req.patient_id,
         use_rag=req.use_rag,
         db=db,
+        allowed_patient_ids=current_user.get_allowed_patient_ids(),
     )
 
 
