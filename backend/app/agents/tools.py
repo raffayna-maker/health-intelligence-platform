@@ -8,6 +8,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.models.patient import Patient
 
+# Runtime MCP mode state — changed via API without restart
+_mcp_runtime: dict = {"url": None}  # None = use settings default
+
+
+def set_mcp_url(url: str) -> None:
+    _mcp_runtime["url"] = url
+
+
+def get_mcp_url() -> str | None:
+    return _mcp_runtime["url"]
+
 
 async def get_all_patients(db: AsyncSession, **kwargs) -> dict:
     """Retrieve all patients with basic info."""
@@ -419,7 +430,7 @@ async def query_medical_reference(db: AsyncSession, query: str = "", drugs: list
     from app.config import get_settings
 
     settings = get_settings()
-    mcp_url = settings.mcp_server_url
+    mcp_url = _mcp_runtime["url"] or settings.mcp_server_url
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:

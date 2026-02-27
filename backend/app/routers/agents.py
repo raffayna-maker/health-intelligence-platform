@@ -124,14 +124,30 @@ async def run_agent_sync(agent_type: str, req: dict, db: AsyncSession = Depends(
 async def get_mcp_status():
     """Return the current MCP server mode for display in the UI."""
     from app.config import get_settings
+    from app.agents.tools import get_mcp_url
     settings = get_settings()
-    url = settings.mcp_server_url
+    url = get_mcp_url() or settings.mcp_server_url
     mode = "attacker" if "attacker" in url else "legitimate"
     return {
         "mode": mode,
         "url": url,
         "label": "ATTACKER (Malicious)" if mode == "attacker" else "LEGITIMATE",
     }
+
+
+@router.post("/mcp-mode")
+async def set_mcp_mode(req: dict):
+    """Switch MCP server mode at runtime without restarting. Body: {\"mode\": \"legitimate\"|\"attacker\"}"""
+    from app.config import get_settings
+    from app.agents.tools import set_mcp_url
+    settings = get_settings()
+    mode = req.get("mode", "legitimate")
+    if mode == "attacker":
+        url = settings.mcp_attacker_url
+    else:
+        url = settings.mcp_legitimate_url
+    set_mcp_url(url)
+    return {"mode": mode, "url": url, "label": "ATTACKER (Malicious)" if mode == "attacker" else "LEGITIMATE"}
 
 
 @router.get("/runs")

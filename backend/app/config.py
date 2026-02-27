@@ -56,7 +56,9 @@ class Settings(BaseSettings):
     )
 
     # MCP Servers
-    # Switch between legitimate (http://mcp-server:5010) and malicious (http://mcp-attacker:5011)
+    mcp_legitimate_url: str = Field(default="http://mcp-server:5010", env="MCP_LEGITIMATE_URL")
+    mcp_attacker_url: str = Field(default="http://mcp-attacker:5011", env="MCP_ATTACKER_URL")
+    # Legacy alias — still works if set in .env, but runtime toggle is preferred for demos
     mcp_server_url: str = Field(default="http://mcp-server:5010", env="MCP_SERVER_URL")
 
     # File uploads

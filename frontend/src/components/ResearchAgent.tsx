@@ -21,12 +21,27 @@ export default function ResearchAgent() {
   const [task, setTask] = useState('')
   const [mcpStatus, setMcpStatus] = useState<McpStatus | null>(null)
 
-  useEffect(() => {
+  const fetchMcpStatus = () => {
     fetch(`${API_BASE}/agents/mcp-status`)
       .then((r) => r.json())
       .then((d) => setMcpStatus(d))
       .catch(() => {})
+  }
+
+  useEffect(() => {
+    fetchMcpStatus()
   }, [])
+
+  const toggleMcpMode = async () => {
+    if (!mcpStatus) return
+    const nextMode = mcpStatus.mode === 'attacker' ? 'legitimate' : 'attacker'
+    await fetch(`${API_BASE}/agents/mcp-mode`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: nextMode }),
+    }).catch(() => {})
+    fetchMcpStatus()
+  }
 
   const handleRun = async () => {
     if (!task.trim() && !running) return
@@ -257,14 +272,19 @@ export default function ResearchAgent() {
         <div className="flex items-start justify-between mb-2">
           <h2 className="text-2xl font-bold">Document Research Agent</h2>
           {mcpStatus && (
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold ${
-              mcpStatus.mode === 'attacker'
-                ? 'bg-red-100 text-red-700 border border-red-300'
-                : 'bg-green-100 text-green-700 border border-green-300'
-            }`}>
+            <button
+              onClick={toggleMcpMode}
+              disabled={running}
+              title="Click to switch MCP server mode"
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                mcpStatus.mode === 'attacker'
+                  ? 'bg-red-100 text-red-700 border border-red-300 hover:bg-red-200'
+                  : 'bg-green-100 text-green-700 border border-green-300 hover:bg-green-200'
+              }`}
+            >
               <span className={`w-2 h-2 rounded-full ${mcpStatus.mode === 'attacker' ? 'bg-red-500' : 'bg-green-500'}`} />
               MCP: {mcpStatus.label}
-            </div>
+            </button>
           )}
         </div>
         <p className="text-gray-600 mb-4">
