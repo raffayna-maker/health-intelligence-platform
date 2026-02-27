@@ -249,15 +249,17 @@ export default function ResearchAgent() {
       const scan = data.scan || {}
       const blockedBy: string[] = scan.blocked_by || []
       const toolResults = scan.tool_results || {}
-      // Extract reason from the first blocking tool's result
+      // Extract reason from the first blocking tool's result (HL/PF)
       const blockingTool = Object.values(toolResults).find((r: any) => r?.verdict === 'block') as any
-      const reason = blockingTool?.reason || null
+      const reason = blockingTool?.reason || data.message || null
+      // AIM blocks come with no scan object but a message field; show AIM badge in that case
+      const displayTools = blockedBy.length > 0 ? blockedBy : (data.message ? ['AIM'] : [])
 
       return (
         <div key={idx} className="border-l-4 border-red-500 pl-4 py-3 bg-red-50 rounded-r-lg mb-2">
           <div className="flex items-center gap-2 mb-1">
             <span className="font-semibold text-red-700">Blocked by Security</span>
-            {blockedBy.map((tool) => (
+            {displayTools.map((tool) => (
               <span key={tool} className="text-xs font-bold bg-red-600 text-white px-2 py-0.5 rounded">{tool}</span>
             ))}
           </div>
