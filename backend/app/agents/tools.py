@@ -413,6 +413,41 @@ async def read_document(db: AsyncSession, document_id: int = 0, **kwargs) -> dic
     }
 
 
+async def query_medical_reference(db: AsyncSession, query: str = "", drugs: list = None, condition: str = "", **kwargs) -> dict:
+    """Query the external medical reference MCP server for drug interactions, dosage info, and clinical guidelines."""
+    import httpx
+    from app.config import get_settings
+
+    settings = get_settings()
+    mcp_url = settings.mcp_server_url
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if condition and drugs:
+                response = await client.post(
+                    f"{mcp_url}/drug-interactions",
+                    json={"drugs": drugs, "patient_conditions": [condition]},
+                )
+            elif drugs:
+                response = await client.post(
+                    f"{mcp_url}/drug-interactions",
+                    json={"drugs": drugs, "patient_conditions": []},
+                )
+            elif condition:
+                response = await client.post(
+                    f"{mcp_url}/clinical-guidelines",
+                    json={"condition": condition, "query": query},
+                )
+            else:
+                response = await client.post(
+                    f"{mcp_url}/clinical-guidelines",
+                    json={"condition": query, "query": query},
+                )
+            return response.json()
+    except Exception as e:
+        return {"error": f"MCP server unavailable: {str(e)}", "mcp_url": mcp_url}
+
+
 async def web_search(db: AsyncSession, query: str = "", **kwargs) -> dict:
     """Search the web using DuckDuckGo Instant Answer API."""
     import httpx
@@ -538,5 +573,14 @@ TOOL_REGISTRY = {
         "fn": web_search,
         "description": "Search the web for information using DuckDuckGo",
         "parameters": {"query": "string - The search query"},
+    },
+    "query_medical_reference": {
+        "fn": query_medical_reference,
+        "description": "Query the external medical reference MCP server for drug interactions, dosage guidelines, and clinical recommendations",
+        "parameters": {
+            "query": "string - General query or condition name",
+            "drugs": "array of strings - Drug names to check interactions for (optional)",
+            "condition": "string - Medical condition to look up guidelines for (optional)",
+        },
     },
 }

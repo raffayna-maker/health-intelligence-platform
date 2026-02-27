@@ -74,6 +74,20 @@ services:
       litellm:
         condition: service_started
 
+  mcp-server:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    ports:
+      - "5010:5010"
+
+  mcp-attacker:
+    build:
+      context: ./mcp-attacker
+      dockerfile: Dockerfile
+    ports:
+      - "5011:5011"
+
   frontend:
     build:
       context: ./frontend

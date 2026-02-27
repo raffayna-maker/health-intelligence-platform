@@ -120,6 +120,20 @@ async def run_agent_sync(agent_type: str, req: dict, db: AsyncSession = Depends(
         }
 
 
+@router.get("/mcp-status")
+async def get_mcp_status():
+    """Return the current MCP server mode for display in the UI."""
+    from app.config import get_settings
+    settings = get_settings()
+    url = settings.mcp_server_url
+    mode = "attacker" if "attacker" in url else "legitimate"
+    return {
+        "mode": mode,
+        "url": url,
+        "label": "ATTACKER (Malicious)" if mode == "attacker" else "LEGITIMATE",
+    }
+
+
 @router.get("/runs")
 async def list_agent_runs(
     agent_type: str = "",

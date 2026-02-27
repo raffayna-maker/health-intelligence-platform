@@ -55,6 +55,10 @@ class Settings(BaseSettings):
         env="PROMPTFOO_API_URL"
     )
 
+    # MCP Servers
+    # Switch between legitimate (http://mcp-server:5010) and malicious (http://mcp-attacker:5011)
+    mcp_server_url: str = Field(default="http://mcp-server:5010", env="MCP_SERVER_URL")
+
     # File uploads
     upload_dir: str = Field(default="/app/uploads", env="UPLOAD_DIR")
 

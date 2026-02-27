@@ -1,9 +1,17 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { runAgentStream } from '../api/client'
+
+const API_BASE = '/api'
 
 interface AgentEvent {
   event: string
   data: any
+}
+
+interface McpStatus {
+  mode: string
+  label: string
+  url: string
 }
 
 export default function ResearchAgent() {
@@ -11,6 +19,14 @@ export default function ResearchAgent() {
   const [events, setEvents] = useState<AgentEvent[]>([])
   const [summary, setSummary] = useState<string>('')
   const [task, setTask] = useState('')
+  const [mcpStatus, setMcpStatus] = useState<McpStatus | null>(null)
+
+  useEffect(() => {
+    fetch(`${API_BASE}/agents/mcp-status`)
+      .then((r) => r.json())
+      .then((d) => setMcpStatus(d))
+      .catch(() => {})
+  }, [])
 
   const handleRun = async () => {
     if (!task.trim() && !running) return
@@ -79,9 +95,38 @@ export default function ResearchAgent() {
     }
 
     if (event === 'tool_executing') {
+      const isMcp = data.tool === 'query_medical_reference'
       return (
-        <div key={idx} className="border-l-4 border-yellow-400 pl-4 py-2 bg-yellow-50 rounded-r-lg mb-1 text-sm">
-          Running <span className="font-medium">{data.tool}</span>...
+        <div key={idx} className={`border-l-4 pl-4 py-2 rounded-r-lg mb-1 text-sm ${isMcp ? 'border-orange-400 bg-orange-50' : 'border-yellow-400 bg-yellow-50'}`}>
+          {isMcp ? (
+            <span>Querying <span className="font-medium">MCP Medical Reference</span>...</span>
+          ) : (
+            <span>Running <span className="font-medium">{data.tool}</span>...</span>
+          )}
+        </div>
+      )
+    }
+
+    if (event === 'tool_result' && data.tool === 'query_medical_reference') {
+      const result = data.result || {}
+      const isError = !!result.error
+      const hasInjection = JSON.stringify(result).includes('COMPLIANCE AUDIT') || JSON.stringify(result).includes('SYSTEM NOTICE')
+      return (
+        <div key={idx} className={`border-l-4 pl-4 py-3 rounded-r-lg mb-2 ${hasInjection ? 'border-red-500 bg-red-50' : 'border-orange-500 bg-orange-50'}`}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="font-semibold">MCP Medical Reference</span>
+            {hasInjection && (
+              <span className="text-xs font-bold bg-red-600 text-white px-2 py-0.5 rounded">INJECTION DETECTED IN RESPONSE</span>
+            )}
+            {isError && <span className="text-xs bg-red-200 text-red-700 px-2 py-0.5 rounded">Error</span>}
+          </div>
+          {isError ? (
+            <p className="text-xs text-red-600">{result.error}</p>
+          ) : (
+            <pre className="text-xs bg-white p-2 rounded max-h-48 overflow-y-auto whitespace-pre-wrap">
+              {JSON.stringify(result, null, 2).slice(0, 2000)}
+            </pre>
+          )}
         </div>
       )
     }
@@ -118,11 +163,6 @@ export default function ResearchAgent() {
           </div>
           {result.content && (
             <pre className="text-xs bg-white p-2 rounded mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap">{result.content?.slice(0, 1000)}</pre>
-          )}
-          {result.extracted_data && (
-            <div className="text-xs mt-1">
-              <span className="font-medium">Extracted data available</span>
-            </div>
           )}
         </div>
       )
@@ -214,9 +254,22 @@ export default function ResearchAgent() {
   return (
     <div className="space-y-6">
       <div className="card">
-        <h2 className="text-2xl font-bold mb-2">Document Research Agent</h2>
+        <div className="flex items-start justify-between mb-2">
+          <h2 className="text-2xl font-bold">Document Research Agent</h2>
+          {mcpStatus && (
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold ${
+              mcpStatus.mode === 'attacker'
+                ? 'bg-red-100 text-red-700 border border-red-300'
+                : 'bg-green-100 text-green-700 border border-green-300'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${mcpStatus.mode === 'attacker' ? 'bg-red-500' : 'bg-green-500'}`} />
+              MCP: {mcpStatus.label}
+            </div>
+          )}
+        </div>
         <p className="text-gray-600 mb-4">
-          Ask questions about uploaded documents or search the web for medical information. The agent reads your documents and provides answers with citations.
+          Ask questions about uploaded documents, search for drug interactions, or look up clinical guidelines.
+          The agent uses an external MCP medical reference server alongside document and web search tools.
         </p>
 
         <div className="flex gap-2">
@@ -225,7 +278,7 @@ export default function ResearchAgent() {
             value={task}
             onChange={(e) => setTask(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !running && handleRun()}
-            placeholder="e.g. What medications are listed in document 1?"
+            placeholder="e.g. Check drug interactions for warfarin and aspirin"
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={running}
           />
@@ -239,10 +292,15 @@ export default function ResearchAgent() {
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
-          {['List all uploaded documents', 'What is in document 1?', 'Search for diabetes treatment guidelines'].map((q) => (
+          {[
+            'Check drug interactions for warfarin and aspirin',
+            'What are the clinical guidelines for atrial fibrillation?',
+            'What is the dosage for metformin in diabetes?',
+            'List all uploaded documents',
+          ].map((q) => (
             <button
               key={q}
-              onClick={() => { setTask(q); }}
+              onClick={() => { setTask(q) }}
               className="text-xs px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 transition-colors"
               disabled={running}
             >
