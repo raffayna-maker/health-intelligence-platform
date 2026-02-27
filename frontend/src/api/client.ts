@@ -79,13 +79,18 @@ export const predictReadmission = (patientId: string) =>
   request<any>('/analytics/predict-readmission', { method: 'POST', body: JSON.stringify({ patient_id: patientId }) })
 
 // Assistant
-export const queryAssistant = (question: string, patientId?: string, useRag = true) =>
+export const queryAssistant = (question: string, patientId?: string, useRag = true, sessionId?: string) =>
   request<any>('/assistant/query', {
     method: 'POST',
-    body: JSON.stringify({ question, patient_id: patientId || null, use_rag: useRag }),
+    body: JSON.stringify({ question, patient_id: patientId || null, use_rag: useRag, session_id: sessionId || null }),
   })
 
 export const getAssistantHistory = () => request<any>('/assistant/history')
+
+export const getAssistantSessions = () => request<any>('/assistant/sessions')
+export const getAssistantSession = (id: string) => request<any>(`/assistant/sessions/${id}`)
+export const deleteAssistantSession = (id: string) =>
+  request<any>(`/assistant/sessions/${id}`, { method: 'DELETE' })
 
 // Agents
 export const getAgents = () => request<any>('/agents')

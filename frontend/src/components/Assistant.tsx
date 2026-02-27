@@ -1,7 +1,13 @@
-import { useState, useEffect } from 'react'
-import { queryAssistant, getAssistantHistory } from '../api/client'
+import { useState, useEffect, useRef } from 'react'
+import { queryAssistant, getAssistantSessions, getAssistantSession, deleteAssistantSession } from '../api/client'
 import { AssistantResponse } from '../types'
 import SecurityBadges from './SecurityBadges'
+
+const SESSION_KEY = 'assistant_session_id'
+
+function initSessionId(): string {
+  return sessionStorage.getItem(SESSION_KEY) || crypto.randomUUID()
+}
 
 export default function Assistant() {
   const [question, setQuestion] = useState('')
@@ -9,14 +15,83 @@ export default function Assistant() {
   const [useRag, setUseRag] = useState(true)
   const [loading, setLoading] = useState(false)
   const [response, setResponse] = useState<AssistantResponse | null>(null)
-  const [history, setHistory] = useState<any[]>([])
+  const [sessions, setSessions] = useState<any[]>([])
   const [chatLog, setChatLog] = useState<Array<{ role: string; content: string; scan?: any; blocked?: boolean; blockedBy?: string }>>([])
+  const [sessionId, setSessionId] = useState<string>(initSessionId)
+  const bottomRef = useRef<HTMLDivElement>(null)
 
+  // Restore existing session on mount if one was in sessionStorage
   useEffect(() => {
-    getAssistantHistory()
-      .then((data) => setHistory(data.history || []))
-      .catch(console.error)
+    const stored = sessionStorage.getItem(SESSION_KEY)
+    if (stored) {
+      getAssistantSession(stored)
+        .then((data: any) => {
+          const restored = (data.messages || []).map((m: any) => ({
+            role: m.role,
+            content: m.blocked ? `BLOCKED: ${m.content}` : m.content,
+            blocked: m.blocked,
+          }))
+          setChatLog(restored)
+        })
+        .catch(() => {
+          // Session not found on backend — start fresh
+          sessionStorage.removeItem(SESSION_KEY)
+          setSessionId(crypto.randomUUID())
+        })
+    }
+    loadSessions()
   }, [])
+
+  // Scroll to bottom when new messages arrive
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatLog, loading])
+
+  const loadSessions = () => {
+    getAssistantSessions()
+      .then((data: any) => setSessions(data.sessions || []))
+      .catch(console.error)
+  }
+
+  const handleNewSession = () => {
+    sessionStorage.removeItem(SESSION_KEY)
+    const newId = crypto.randomUUID()
+    setSessionId(newId)
+    setChatLog([])
+    setResponse(null)
+    loadSessions()
+  }
+
+  const handleLoadSession = async (sid: string) => {
+    try {
+      const data: any = await getAssistantSession(sid)
+      const restored = (data.messages || []).map((m: any) => ({
+        role: m.role,
+        content: m.blocked ? `BLOCKED: ${m.content}` : m.content,
+        blocked: m.blocked,
+      }))
+      sessionStorage.setItem(SESSION_KEY, sid)
+      setSessionId(sid)
+      setChatLog(restored)
+      setResponse(null)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const handleDeleteSession = async (sid: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await deleteAssistantSession(sid)
+      if (sid === sessionId) {
+        handleNewSession()
+      } else {
+        loadSessions()
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
 
   const handleSubmit = async () => {
     if (!question.trim()) return
@@ -26,8 +101,15 @@ export default function Assistant() {
     setChatLog((prev) => [...prev, { role: 'user', content: q }])
 
     try {
-      const res = await queryAssistant(q, patientId || undefined, useRag)
+      const res = await queryAssistant(q, patientId || undefined, useRag, sessionId)
       setResponse(res)
+
+      // Persist session_id from first response (or if backend echoes one)
+      if (res.session_id) {
+        sessionStorage.setItem(SESSION_KEY, res.session_id)
+        if (res.session_id !== sessionId) setSessionId(res.session_id)
+      }
+
       if (res.blocked) {
         setChatLog((prev) => [
           ...prev,
@@ -49,8 +131,7 @@ export default function Assistant() {
           },
         ])
       }
-      // Refresh history
-      getAssistantHistory().then((data) => setHistory(data.history || []))
+      loadSessions()
     } catch (err) {
       console.error(err)
       setChatLog((prev) => [...prev, { role: 'assistant', content: 'Error: Failed to get response.' }])
@@ -61,7 +142,12 @@ export default function Assistant() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-bold">Clinical Assistant</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">Clinical Assistant</h2>
+        <button onClick={handleNewSession} className="btn-secondary text-sm">
+          + New Session
+        </button>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {/* Chat Area */}
@@ -113,6 +199,7 @@ export default function Assistant() {
                 </div>
               </div>
             )}
+            <div ref={bottomRef} />
           </div>
 
           {/* Input */}
@@ -165,20 +252,34 @@ export default function Assistant() {
             </div>
           )}
 
-          {/* History */}
+          {/* Sessions */}
           <div className="card">
-            <h3 className="font-semibold mb-3">Recent Queries</h3>
-            {history.length === 0 ? (
-              <p className="text-gray-400 text-sm">No queries yet</p>
+            <h3 className="font-semibold mb-3">Sessions</h3>
+            {sessions.length === 0 ? (
+              <p className="text-gray-400 text-sm">No sessions yet</p>
             ) : (
-              <div className="space-y-2">
-                {history.map((h, i) => (
-                  <div key={i} className="text-sm py-1 border-b border-gray-100 last:border-0">
-                    <p className="text-gray-700 truncate">{h.question}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className={h.blocked ? 'badge-block' : 'badge-pass'}>{h.blocked ? 'blocked' : 'pass'}</span>
-                      <span className="text-xs text-gray-400">{h.timestamp ? new Date(h.timestamp).toLocaleTimeString() : ''}</span>
+              <div className="space-y-1">
+                {sessions.map((s) => (
+                  <div
+                    key={s.session_id}
+                    onClick={() => handleLoadSession(s.session_id)}
+                    className={`group flex items-start justify-between gap-1 text-sm py-2 px-2 rounded cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0 ${
+                      s.session_id === sessionId ? 'bg-blue-50 border-l-2 border-l-blue-400' : ''
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-gray-700 truncate">{s.title || '(untitled)'}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {s.created_at ? new Date(s.created_at).toLocaleDateString() : ''}
+                      </p>
                     </div>
+                    <button
+                      onClick={(e) => handleDeleteSession(s.session_id, e)}
+                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs px-1 shrink-0"
+                      title="Delete session"
+                    >
+                      ✕
+                    </button>
                   </div>
                 ))}
               </div>

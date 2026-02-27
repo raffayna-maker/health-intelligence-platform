@@ -7,6 +7,7 @@ from app.services.ollama_service import ollama_service
 from app.services.chromadb_service import chromadb_service
 from app.services.security_service import security_scan, get_block_reason, log_security_scan
 from app.schemas.assistant import AssistantResponse
+from app.models.conversation import ConversationSession, AssistantMessage
 from app.exceptions import AIMBlockedException
 
 SYSTEM_PROMPT = """You are a clinical assistant for a healthcare provider.
@@ -27,6 +28,7 @@ class AssistantService:
         use_rag: bool,
         db: AsyncSession,
         allowed_patient_ids: Optional[List[str]] = None,
+        session_id: Optional[str] = None,
     ) -> AssistantResponse:
         # Step 1: Run input security scan and RAG lookup in parallel
         async def _retrieve_context():
@@ -95,13 +97,43 @@ class AssistantService:
         sources = []
         if rag_task:
             context, sources = await rag_task
-        
+
+        # Step 2b: Session — load/create and inject history into prompt
+        history_text = ""
+        if session_id:
+            session_obj = await db.get(ConversationSession, session_id)
+            if not session_obj:
+                session_obj = ConversationSession(id=session_id, title=question[:200])
+                db.add(session_obj)
+                await db.flush()
+
+            prior_result = await db.execute(
+                select(AssistantMessage)
+                .where(AssistantMessage.session_id == session_id)
+                .order_by(AssistantMessage.timestamp.desc())
+                .limit(10)
+            )
+            prior = list(reversed(prior_result.scalars().all()))
+            if prior:
+                history_text = "\n\nPrevious conversation:\n"
+                for m in prior:
+                    role_label = "User" if m.role == "user" else "Assistant"
+                    history_text += f"{role_label}: {m.content}\n"
+
+            # Save user message now (input scan passed)
+            db.add(AssistantMessage(session_id=session_id, role="user", content=question))
+            await db.flush()
+
         # Step 3: Generate response with Ollama
-        prompt = f"{SYSTEM_PROMPT}\n\nContext:\n{context}\n\nQuestion: {question}"
+        prompt = f"{SYSTEM_PROMPT}\n\nContext:\n{context}{history_text}\n\nQuestion: {question}"
         
         try:
             answer = await ollama_service.generate(prompt)
         except AIMBlockedException as e:
+            if session_id:
+                db.add(AssistantMessage(session_id=session_id, role="assistant",
+                                        content="[blocked by AIM]", blocked=True))
+                await db.commit()
             return AssistantResponse(
                 answer="",
                 sources=sources,
@@ -109,15 +141,19 @@ class AssistantService:
                 blocked=True,
                 blocked_by="AIM",
                 blocked_reason=e.reason,
+                session_id=session_id,
             )
         except Exception as e:
+            if session_id:
+                await db.rollback()
             return AssistantResponse(
                 answer=f"Error generating response: {str(e)}",
                 sources=sources,
                 security_scan=input_scan,
                 blocked=False,
+                session_id=session_id,
             )
-        
+
         # Step 4: Scan output with dual security
         output_scan = await security_scan(
             content=answer,
@@ -125,11 +161,18 @@ class AssistantService:
             feature_name="clinical_assistant",
             prompt=question,
         )
-        
+
         # Log output scan to database
         await log_security_scan(db, output_scan, answer)
-        
-        if output_scan["blocked"]:
+
+        output_blocked = output_scan["blocked"]
+
+        if session_id:
+            db.add(AssistantMessage(session_id=session_id, role="assistant",
+                                    content=answer, blocked=output_blocked))
+            await db.commit()
+
+        if output_blocked:
             return AssistantResponse(
                 answer="",
                 sources=sources,
@@ -137,13 +180,15 @@ class AssistantService:
                 blocked=True,
                 blocked_by=", ".join(output_scan["blocked_by"]),
                 blocked_reason=get_block_reason(output_scan),
+                session_id=session_id,
             )
-        
+
         return AssistantResponse(
             answer=answer,
             sources=sources,
             security_scan=output_scan,
             blocked=False,
+            session_id=session_id,
         )
 
 
