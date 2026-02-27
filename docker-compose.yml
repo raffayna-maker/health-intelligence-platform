@@ -88,6 +88,19 @@ services:
     ports:
       - "5011:5011"
 
+  email-poller:
+    build:
+      context: ./email-poller
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - ${HOME}/.promptfoo:/root/.promptfoo:ro
+    depends_on:
+      - backend
+      - nginx
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
