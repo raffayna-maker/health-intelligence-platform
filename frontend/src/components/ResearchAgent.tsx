@@ -246,10 +246,23 @@ export default function ResearchAgent() {
     }
 
     if (event === 'blocked') {
+      const scan = data.scan || {}
+      const blockedBy: string[] = scan.blocked_by || []
+      const toolResults = scan.tool_results || {}
+      // Extract reason from the first blocking tool's result
+      const blockingTool = Object.values(toolResults).find((r: any) => r?.verdict === 'block') as any
+      const reason = blockingTool?.reason || null
+
       return (
         <div key={idx} className="border-l-4 border-red-500 pl-4 py-3 bg-red-50 rounded-r-lg mb-2">
-          <span className="font-semibold text-red-700">Blocked by Security</span>
-          <p className="text-sm text-red-600">Stage: {data.stage}</p>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="font-semibold text-red-700">Blocked by Security</span>
+            {blockedBy.map((tool) => (
+              <span key={tool} className="text-xs font-bold bg-red-600 text-white px-2 py-0.5 rounded">{tool}</span>
+            ))}
+          </div>
+          <p className="text-xs text-red-500">Stage: {data.stage}</p>
+          {reason && <p className="text-sm text-red-700 mt-1">Reason: <span className="font-medium">{reason}</span></p>}
         </div>
       )
     }
