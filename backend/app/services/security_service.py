@@ -158,7 +158,7 @@ class HiddenLayerClient(SecurityTool):
 
 
 class PromptFooClient(SecurityTool):
-    """Client for PromptFoo Adaptive Guardrails API. INPUT scanning only."""
+    """Client for PromptFoo Adaptive Guardrails API. Supports INPUT and OUTPUT placements."""
 
     tool_name = "promptfoo"
     display_name = "PromptFoo"
@@ -169,18 +169,8 @@ class PromptFooClient(SecurityTool):
         self.base_url = settings.promptfoo_api_url
 
     async def scan(self, content: str, scan_type: str = "input", prompt: Optional[str] = None) -> Dict[str, Any]:
-        """Scan content with PromptFoo Guardrails. Input only — output scans are skipped."""
+        """Scan content with PromptFoo Guardrails. Supports INPUT and OUTPUT placements."""
         start = time.time()
-
-        # PromptFoo only handles input scanning
-        if scan_type != "input":
-            elapsed = int((time.time() - start) * 1000)
-            return {
-                "verdict": "skip",
-                "reason": "PromptFoo only scans input",
-                "scan_time_ms": elapsed,
-                "details": {},
-            }
 
         if not self.api_key or not self.target_id:
             elapsed = int((time.time() - start) * 1000)
@@ -191,6 +181,18 @@ class PromptFooClient(SecurityTool):
                 "details": {},
             }
 
+        # Build placement-specific payload
+        if scan_type == "output":
+            placement = "OUTPUT"
+            # Include user turn so PF has full conversation context
+            messages = []
+            if prompt:
+                messages.append({"role": "user", "content": prompt})
+            messages.append({"role": "assistant", "content": content})
+        else:
+            placement = "INPUT"
+            messages = [{"role": "user", "content": content}]
+
         try:
             url = f"{self.base_url}/api/v1/guardrails/{self.target_id}/evaluate"
             headers = {
@@ -198,8 +200,8 @@ class PromptFooClient(SecurityTool):
                 "Content-Type": "application/json",
             }
             payload = {
-                "placement": "INPUT",
-                "messages": [{"role": "user", "content": content}],
+                "placement": placement,
+                "messages": messages,
             }
 
             async with httpx.AsyncClient(timeout=15.0) as client:
