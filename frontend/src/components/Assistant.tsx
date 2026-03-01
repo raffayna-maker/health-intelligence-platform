@@ -6,7 +6,11 @@ import SecurityBadges from './SecurityBadges'
 const SESSION_KEY = 'assistant_session_id'
 
 function initSessionId(): string {
-  return sessionStorage.getItem(SESSION_KEY) || crypto.randomUUID()
+  const stored = sessionStorage.getItem(SESSION_KEY)
+  if (stored) return stored
+  const newId = crypto.randomUUID()
+  sessionStorage.setItem(SESSION_KEY, newId)
+  return newId
 }
 
 export default function Assistant() {
@@ -54,8 +58,8 @@ export default function Assistant() {
   }
 
   const handleNewSession = () => {
-    sessionStorage.removeItem(SESSION_KEY)
     const newId = crypto.randomUUID()
+    sessionStorage.setItem(SESSION_KEY, newId)
     setSessionId(newId)
     setChatLog([])
     setResponse(null)
