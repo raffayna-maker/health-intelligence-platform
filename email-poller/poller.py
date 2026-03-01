@@ -71,7 +71,15 @@ def prompt_handler(body: str, sender: str, subject: str) -> None:
             timeout=120,
         )
         r.raise_for_status()
-        answer = r.json().get("answer") or "(no answer returned)"
+        data = r.json()
+        if data.get("blocked"):
+            blocked_by = data.get("blocked_by") or "security scan"
+            reason = data.get("blocked_reason") or ""
+            answer = f"Request blocked by {blocked_by}."
+            if reason:
+                answer += f"\n\nReason: {reason}"
+        else:
+            answer = data.get("answer") or "(no answer returned)"
     except Exception as e:
         answer = f"Error querying assistant: {e}"
     send_reply(sender, f"RE: {subject}", answer)
