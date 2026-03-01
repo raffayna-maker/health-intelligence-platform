@@ -74,10 +74,8 @@ def prompt_handler(body: str, sender: str, subject: str) -> None:
         data = r.json()
         if data.get("blocked"):
             blocked_by = data.get("blocked_by") or "security scan"
-            reason = data.get("blocked_reason") or ""
-            answer = f"Request blocked by {blocked_by}."
-            if reason:
-                answer += f"\n\nReason: {reason}"
+            reason = data.get("blocked_reason") or "Security scan failed"
+            answer = f"Blocked by {blocked_by}\n\nBLOCKED: {reason}"
         else:
             answer = data.get("answer") or "(no answer returned)"
     except Exception as e:
