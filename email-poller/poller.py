@@ -222,8 +222,8 @@ def handle(raw: bytes) -> None:
     sender         = msg.get("From") or ""
     body           = get_body(msg)
 
-    # Strip RE:/FWD: prefixes so replies are handled the same as new emails
-    clean_subject = re.sub(r'^(re|fwd?)\s*:\s*', '', subject.strip(), flags=re.IGNORECASE).strip()
+    # Strip all RE:/FWD: prefixes so replies are handled the same as new emails
+    clean_subject = re.sub(r'^(re\s*:\s*|fwd?\s*:\s*)+', '', subject.strip(), flags=re.IGNORECASE).strip()
     # Extract first word (split on spaces and colons)
     first_word = re.split(r'[\s:]+', clean_subject.upper())[0]
 
