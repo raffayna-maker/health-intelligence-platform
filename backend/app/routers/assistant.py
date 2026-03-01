@@ -24,6 +24,7 @@ async def query_assistant(
         db=db,
         allowed_patient_ids=current_user.get_allowed_patient_ids(),
         session_id=req.session_id or None,
+        user_id=current_user.username,
     )
 
 
@@ -51,9 +52,13 @@ async def query_history(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/sessions")
-async def list_sessions(db: AsyncSession = Depends(get_db)):
+async def list_sessions(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserPrincipal = Depends(get_current_user),
+):
     result = await db.execute(
         select(ConversationSession)
+        .where(ConversationSession.user_id == current_user.username)
         .order_by(ConversationSession.created_at.desc())
         .limit(50)
     )
@@ -71,9 +76,13 @@ async def list_sessions(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetail)
-async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):
+async def get_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserPrincipal = Depends(get_current_user),
+):
     session_obj = await db.get(ConversationSession, session_id)
-    if not session_obj:
+    if not session_obj or session_obj.user_id != current_user.username:
         raise HTTPException(status_code=404, detail="Session not found")
 
     msgs_result = await db.execute(
@@ -100,9 +109,13 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/sessions/{session_id}")
-async def delete_session(session_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserPrincipal = Depends(get_current_user),
+):
     session_obj = await db.get(ConversationSession, session_id)
-    if not session_obj:
+    if not session_obj or session_obj.user_id != current_user.username:
         raise HTTPException(status_code=404, detail="Session not found")
     await db.delete(session_obj)
     await db.commit()

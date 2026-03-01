@@ -10,6 +10,7 @@ class ConversationSession(Base):
     id         = Column(String(36), primary_key=True)   # UUID string
     title      = Column(String(200), nullable=True)      # first question, truncated
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    user_id    = Column(String(100), nullable=True, index=True)  # owner; null = anonymous
 
     messages = relationship(
         "AssistantMessage",

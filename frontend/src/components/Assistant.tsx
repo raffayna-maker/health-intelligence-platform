@@ -2,18 +2,14 @@ import { useState, useEffect, useRef } from 'react'
 import { queryAssistant, getAssistantSessions, getAssistantSession, deleteAssistantSession } from '../api/client'
 import { AssistantResponse } from '../types'
 import SecurityBadges from './SecurityBadges'
+import { useUser } from '../context/UserContext'
 
-const SESSION_KEY = 'assistant_session_id'
-
-function initSessionId(): string {
-  const stored = sessionStorage.getItem(SESSION_KEY)
-  if (stored) return stored
-  const newId = crypto.randomUUID()
-  sessionStorage.setItem(SESSION_KEY, newId)
-  return newId
-}
+const sessionKey = (username: string) => `assistant_session_id_${username}`
 
 export default function Assistant() {
+  const { currentUser } = useUser()
+  const username = currentUser?.username || 'anonymous'
+
   const [question, setQuestion] = useState('')
   const [patientId, setPatientId] = useState('')
   const [useRag, setUseRag] = useState(true)
@@ -21,12 +17,20 @@ export default function Assistant() {
   const [response, setResponse] = useState<AssistantResponse | null>(null)
   const [sessions, setSessions] = useState<any[]>([])
   const [chatLog, setChatLog] = useState<Array<{ role: string; content: string; scan?: any; blocked?: boolean; blockedBy?: string }>>([])
-  const [sessionId, setSessionId] = useState<string>(initSessionId)
+  const [sessionId, setSessionId] = useState<string>('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Restore existing session on mount if one was in sessionStorage
+  // Reset chat and load correct session whenever the active user changes
   useEffect(() => {
-    const stored = sessionStorage.getItem(SESSION_KEY)
+    const key = sessionKey(username)
+    const stored = sessionStorage.getItem(key)
+    const newId = stored || crypto.randomUUID()
+    if (!stored) sessionStorage.setItem(key, newId)
+
+    setChatLog([])
+    setResponse(null)
+    setSessionId(newId)
+
     if (stored) {
       getAssistantSession(stored)
         .then((data: any) => {
@@ -38,13 +42,15 @@ export default function Assistant() {
           setChatLog(restored)
         })
         .catch(() => {
-          // Session not found on backend — start fresh
-          sessionStorage.removeItem(SESSION_KEY)
-          setSessionId(crypto.randomUUID())
+          // Session not found on backend (different user, deleted, etc.) — start fresh
+          sessionStorage.removeItem(key)
+          const freshId = crypto.randomUUID()
+          sessionStorage.setItem(key, freshId)
+          setSessionId(freshId)
         })
     }
     loadSessions()
-  }, [])
+  }, [username])
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
@@ -58,8 +64,9 @@ export default function Assistant() {
   }
 
   const handleNewSession = () => {
+    const key = sessionKey(username)
     const newId = crypto.randomUUID()
-    sessionStorage.setItem(SESSION_KEY, newId)
+    sessionStorage.setItem(key, newId)
     setSessionId(newId)
     setChatLog([])
     setResponse(null)
@@ -74,7 +81,7 @@ export default function Assistant() {
         content: m.blocked ? `BLOCKED: ${m.content}` : m.content,
         blocked: m.blocked,
       }))
-      sessionStorage.setItem(SESSION_KEY, sid)
+      sessionStorage.setItem(sessionKey(username), sid)
       setSessionId(sid)
       setChatLog(restored)
       setResponse(null)
@@ -110,7 +117,7 @@ export default function Assistant() {
 
       // Persist session_id from first response (or if backend echoes one)
       if (res.session_id) {
-        sessionStorage.setItem(SESSION_KEY, res.session_id)
+        sessionStorage.setItem(sessionKey(username), res.session_id)
         if (res.session_id !== sessionId) setSessionId(res.session_id)
       }
 

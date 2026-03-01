@@ -29,6 +29,7 @@ class AssistantService:
         db: AsyncSession,
         allowed_patient_ids: Optional[List[str]] = None,
         session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> AssistantResponse:
         # Step 1: Run input security scan and RAG lookup in parallel
         async def _retrieve_context():
@@ -103,7 +104,7 @@ class AssistantService:
         if session_id:
             session_obj = await db.get(ConversationSession, session_id)
             if not session_obj:
-                session_obj = ConversationSession(id=session_id, title=question[:200])
+                session_obj = ConversationSession(id=session_id, title=question[:200], user_id=user_id)
                 db.add(session_obj)
                 await db.flush()
 
