@@ -1,8 +1,10 @@
 """
 Email Poller — watches Gmail inbox and routes emails by subject prefix.
 
-PROMPT (or PROMPT: anything)
+PROMPT (or PROMPT: anything, or RE: PROMPT from replies)
   Body = question sent to Clinical Assistant API → reply with LLM answer
+  Each sender gets a persistent conversation session (visible in the UI
+  under the 'anonymous' user / Admin tab).
 
 REDTEAM (or REDTEAM: anything)
   Body = promptfoo CLI command copied from PF SaaS UI
@@ -18,6 +20,7 @@ import smtplib
 import subprocess
 import threading
 import time
+import uuid
 from datetime import date
 from email.header import decode_header as _decode_header
 from email.mime.text import MIMEText
@@ -31,6 +34,19 @@ BACKEND    = "http://backend:8080"
 IMAP_HOST  = "imap.gmail.com"
 SMTP_HOST  = "smtp.gmail.com"
 SMTP_PORT  = 587
+
+# In-memory map: sender address → session UUID
+# Persists for the lifetime of the container so replies and follow-up
+# emails from the same sender continue in the same conversation session.
+_sender_sessions: dict = {}
+
+
+def _session_for(sender: str) -> str:
+    """Return the persistent session UUID for this sender, creating one if needed."""
+    if sender not in _sender_sessions:
+        _sender_sessions[sender] = str(uuid.uuid4())
+        print(f"[session] new session {_sender_sessions[sender]} for {sender}")
+    return _sender_sessions[sender]
 
 
 # ---------------------------------------------------------------------------
@@ -65,11 +81,12 @@ def send_reply(to: str, subject: str, body: str) -> None:
 
 def prompt_handler(body: str, sender: str, subject: str) -> None:
     question = extract_prompt(body)
-    print(f"[PROMPT] from={sender} question_preview={question[:80]!r}")
+    session_id = _session_for(sender)
+    print(f"[PROMPT] from={sender} session={session_id} question_preview={question[:80]!r}")
     try:
         r = requests.post(
             f"{BACKEND}/api/assistant/query",
-            json={"question": question, "use_rag": True},
+            json={"question": question, "use_rag": True, "session_id": session_id},
             timeout=120,
         )
         r.raise_for_status()
@@ -205,8 +222,10 @@ def handle(raw: bytes) -> None:
     sender         = msg.get("From") or ""
     body           = get_body(msg)
 
-    # Extract first word from subject (split on spaces and colons)
-    first_word = re.split(r'[\s:]+', subject.strip().upper())[0]
+    # Strip RE:/FWD: prefixes so replies are handled the same as new emails
+    clean_subject = re.sub(r'^(re|fwd?)\s*:\s*', '', subject.strip(), flags=re.IGNORECASE).strip()
+    # Extract first word (split on spaces and colons)
+    first_word = re.split(r'[\s:]+', clean_subject.upper())[0]
 
     if first_word == "PROMPT":
         prompt_handler(body, sender, subject)
