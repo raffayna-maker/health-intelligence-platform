@@ -64,11 +64,12 @@ def send_reply(to: str, subject: str, body: str) -> None:
 # ---------------------------------------------------------------------------
 
 def prompt_handler(body: str, sender: str, subject: str) -> None:
-    print(f"[PROMPT] from={sender} body_preview={body[:80]!r}")
+    question = strip_signature(body)
+    print(f"[PROMPT] from={sender} question_preview={question[:80]!r}")
     try:
         r = requests.post(
             f"{BACKEND}/api/assistant/query",
-            json={"question": body, "use_rag": True},
+            json={"question": question, "use_rag": True},
             timeout=120,
         )
         r.raise_for_status()
@@ -153,6 +154,16 @@ def redteam_handler(body: str, sender: str, subject: str) -> None:
 # ---------------------------------------------------------------------------
 # Email parsing helpers
 # ---------------------------------------------------------------------------
+
+def strip_signature(text: str) -> str:
+    """Remove email signature (everything after the standard '-- ' delimiter)."""
+    normalized = text.replace('\r\n', '\n').replace('\r', '\n')
+    for delimiter in ('\n-- \n', '\n-- ', '\n--\n'):
+        idx = normalized.find(delimiter)
+        if idx != -1:
+            return normalized[:idx].strip()
+    return normalized.strip()
+
 
 def get_body(msg) -> str:
     """Extract plain-text body from an email.Message object."""
