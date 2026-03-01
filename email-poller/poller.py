@@ -64,7 +64,7 @@ def send_reply(to: str, subject: str, body: str) -> None:
 # ---------------------------------------------------------------------------
 
 def prompt_handler(body: str, sender: str, subject: str) -> None:
-    question = strip_signature(body)
+    question = extract_prompt(body)
     print(f"[PROMPT] from={sender} question_preview={question[:80]!r}")
     try:
         r = requests.post(
@@ -155,14 +155,23 @@ def redteam_handler(body: str, sender: str, subject: str) -> None:
 # Email parsing helpers
 # ---------------------------------------------------------------------------
 
-def strip_signature(text: str) -> str:
-    """Remove email signature (everything after the standard '-- ' delimiter)."""
-    normalized = text.replace('\r\n', '\n').replace('\r', '\n')
-    for delimiter in ('\n-- \n', '\n-- ', '\n--\n'):
-        idx = normalized.find(delimiter)
-        if idx != -1:
-            return normalized[:idx].strip()
-    return normalized.strip()
+def extract_prompt(text: str) -> str:
+    """Extract only the prompt from an email body, stripping signatures.
+
+    Strategy (in order):
+    1. Take only the first paragraph (text before the first blank line) —
+       email clients always put the message before a blank line, then signature.
+    2. If the first paragraph still contains an inline '-- ' signature marker,
+       strip everything from ' -- ' onward as a fallback.
+    """
+    normalized = text.replace('\r\n', '\n').replace('\r', '\n').strip()
+    # Step 1: take only the first paragraph
+    first_para = normalized.split('\n\n')[0].strip()
+    # Step 2: also strip inline '-- ' marker (e.g. Gmail appends it without a newline)
+    inline_idx = first_para.find(' -- ')
+    if inline_idx != -1:
+        first_para = first_para[:inline_idx].strip()
+    return first_para
 
 
 def get_body(msg) -> str:
