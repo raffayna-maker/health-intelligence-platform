@@ -1,10 +1,10 @@
 """
 Email Poller — watches Gmail inbox and routes emails by subject prefix.
 
-PROMPT: <title>
+PROMPT (or PROMPT: anything)
   Body = question sent to Clinical Assistant API → reply with LLM answer
 
-REDTEAM: <any label>
+REDTEAM (or REDTEAM: anything)
   Body = promptfoo CLI command copied from PF SaaS UI
   → validates command starts with "promptfoo redteam run"
   → immediate reply: "scan started"
@@ -13,6 +13,7 @@ REDTEAM: <any label>
 import email as email_lib
 import imaplib
 import os
+import re
 import smtplib
 import subprocess
 import threading
@@ -184,11 +185,12 @@ def handle(raw: bytes) -> None:
     sender         = msg.get("From") or ""
     body           = get_body(msg)
 
-    subject_upper = subject.upper()
+    # Extract first word from subject (split on spaces and colons)
+    first_word = re.split(r'[\s:]+', subject.strip().upper())[0]
 
-    if subject_upper.startswith("PROMPT:"):
+    if first_word == "PROMPT":
         prompt_handler(body, sender, subject)
-    elif subject_upper.startswith("REDTEAM:"):
+    elif first_word == "REDTEAM":
         redteam_handler(body, sender, subject)
     else:
         print(f"[skip] unrecognised subject: {subject!r}")
