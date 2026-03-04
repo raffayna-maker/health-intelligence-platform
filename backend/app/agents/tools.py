@@ -460,42 +460,41 @@ async def query_medical_reference(db: AsyncSession, query: str = "", drugs: list
 
 
 async def web_search(db: AsyncSession, query: str = "", **kwargs) -> dict:
-    """Search the web using DuckDuckGo Instant Answer API."""
+    """Search the web using Tavily Search API."""
     import httpx
+    from ..config import get_settings
 
     if not query:
         return {"error": "No search query provided"}
 
+    settings = get_settings()
+    if not settings.tavily_api_key:
+        return {"query": query, "error": "Tavily API key not configured", "results": []}
+
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                "https://api.duckduckgo.com/",
-                params={"q": query, "format": "json", "no_html": "1", "skip_disambig": "1"},
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                "https://api.tavily.com/search",
+                json={
+                    "api_key": settings.tavily_api_key,
+                    "query": query,
+                    "search_depth": "basic",
+                    "max_results": 5,
+                },
             )
             data = response.json()
 
         results = []
-
-        # Main abstract
-        if data.get("Abstract"):
+        for item in data.get("results", []):
             results.append({
-                "title": data.get("Heading", ""),
-                "source": data.get("AbstractSource", ""),
-                "url": data.get("AbstractURL", ""),
-                "text": data["Abstract"],
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "text": item.get("content", ""),
+                "score": item.get("score"),
             })
 
-        # Related topics
-        for topic in (data.get("RelatedTopics") or [])[:5]:
-            if isinstance(topic, dict) and topic.get("Text"):
-                results.append({
-                    "title": topic.get("Text", "")[:100],
-                    "url": topic.get("FirstURL", ""),
-                    "text": topic.get("Text", ""),
-                })
-
         if not results:
-            return {"query": query, "results_count": 0, "results": [], "note": "No instant answer available. Try a more specific query."}
+            return {"query": query, "results_count": 0, "results": [], "note": "No results found."}
 
         return {"query": query, "results_count": len(results), "results": results}
 

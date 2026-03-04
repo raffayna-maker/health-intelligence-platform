@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     # File uploads
     upload_dir: str = Field(default="/app/uploads", env="UPLOAD_DIR")
 
+    # Tavily Web Search
+    tavily_api_key: str = Field(default="", env="TAVILY_API_KEY")
+
     # Gmail SMTP
     gmail_address: str = Field(default="", env="GMAIL_ADDRESS")
     gmail_app_password: str = Field(default="", env="GMAIL_APP_PASSWORD")
